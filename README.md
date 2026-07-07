@@ -8,6 +8,10 @@ tablet, or laptop on the same WiFi.
 ![Flask](https://img.shields.io/badge/Flask-3.0-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+<p align="center">
+ <img src="./Photos/Bar_POS_admin-01.png" width="600" />
+</p>
+
 ---
 
 ## Features
@@ -24,6 +28,10 @@ tablet, or laptop on the same WiFi.
 | 🛒 **Products** | Categories, modifiers, pricing — full CRUD |
 | 👥 **Users** | Admin and staff roles, password management |
 | 🌙 **Dark / Light theme** | Per-device, remembered automatically |
+
+<p align="center">
+ <img src="./Photos/Bar_POS_staff-panel-darkmode-02.png" width="600" />
+</p>
 
 ---
 
@@ -157,6 +165,37 @@ cp -r dist/HomeBarPOS /mnt/c/Users/YourName/Desktop/HomeBarPOS_Linux
 
 > The Linux binary only runs on Linux. The Windows `.exe` only runs on Windows.
 
+#### Troubleshooting: `git clone` inside WSL
+
+If you see either of these:
+
+```
+error: chmod on .../.git/config.lock failed: Operation not permitted
+fatal: could not set 'core.filemode' to 'false'
+```
+
+or
+
+```
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+```
+
+then:
+
+- **The `chmod`/`filemode` error** happens when cloning onto the Windows drive
+  (`/mnt/c/...`) from inside WSL — the Windows filesystem doesn't support Linux
+  file permissions. Clone into your Linux home directory instead (`cd ~` first,
+  as in Step 4 above), then copy the result back to Windows afterward if needed.
+- **Don't use `sudo`** for `git clone` — it isn't needed and can leave files
+  owned by `root`, causing further permission issues later.
+- **The auth error** is GitHub no longer accepting account passwords over HTTPS.
+  Instead of a password, use a
+  [Personal Access Token](https://github.com/settings/tokens) (paste it in place
+  of the password when prompted), or set up
+  [SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh)
+  and clone with `git clone git@github.com:Techsociology/PointOfSales.git` instead.
+
+---
 
 ## Card Reader *(Beta)*
 
@@ -209,6 +248,47 @@ All data is stored in `instance/bar_pos.db` (SQLite).
 
 > `instance/` is excluded from git by `.gitignore`.
 > It contains your database and your saved Stripe API key — never commit it.
+
+---
+
+## Project structure
+
+```
+app.py                    Flask routes and business logic
+database.py               SQLite schema and helper functions
+launcher.py               Entry point for the compiled executable
+build_exe.bat             Build a standalone Windows executable
+build_linux.sh            Build a standalone Linux executable
+HomeBarPOS.spec           PyInstaller configuration
+HomeBarPOS_installer.nsi  NSIS script — packages dist\ into a single Setup.exe
+requirements.txt          Python dependencies
+static/
+  app.js                  Register UI (vanilla JS)
+  style.css               All styles (dark and light theme)
+templates/                Jinja2 HTML templates
+instance/                 Auto-created on first run (excluded from git)
+  bar_pos.db              SQLite database — all your data lives here
+  secret.txt              Flask session key — auto-generated, never share
+```
+
+---
+
+## Acknowledgements
+
+Built with and thanks to these open-source projects:
+
+- Built with assistance from [Claude](https://claude.ai) (Anthropic AI) ❤️
+- [Flask](https://flask.palletsprojects.com/) — web framework
+- [Werkzeug](https://werkzeug.palletsprojects.com/) — WSGI utilities (password hashing, dev server internals)
+- [Flask-WTF](https://flask-wtf.readthedocs.io/) — CSRF protection
+- [waitress](https://docs.pylonsproject.org/projects/waitress/) — production WSGI server used in the packaged builds
+- [Stripe](https://stripe.com/docs/terminal) — Stripe Terminal SDK, for card reader integration
+- [PyInstaller](https://pyinstaller.org/) — packaging the app into standalone Windows/Linux executables
+- [NSIS](https://nsis.sourceforge.io/) — building the Windows installer
+
+Thanks as well to everyone who files issues, tests the Card Reader beta, and
+contributes fixes and features — see [CONTRIBUTING.md](CONTRIBUTING.md) to
+get involved.
 
 ---
 

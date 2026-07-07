@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Cash Alerts — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel">
+  <div class="panel-head">
+    <h2>Cash Discrepancy Alerts</h2>
+  </div>
+  <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+    An alert is logged every time someone tries to close a shift but the counted
+    cash doesn't match the expected amount. Review each one and mark it resolved
+    once you've investigated.
+  </p>
+  {% if alerts %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>#</th><th>Shift</th><th>When</th><th>By</th>
+        <th>Expected</th><th>Counted</th><th>Diff</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for a in alerts %}
+    <tr class="{{ '' if a.resolved else 'alert-row' }}">
+      <td>{{ a.id }}</td>
+      <td>Shift #{{ a.shift_id }}</td>
+      <td>{{ a.created_at }}</td>
+      <td>{{ a.attempted_by or '—' }}</td>
+      <td class="num">${{ '%.2f' % a.expected_cash }}</td>
+      <td class="num">${{ '%.2f' % a.counted_cash }}</td>
+      <td class="num {{ 'diff-bad' if a.diff != 0 else 'diff-ok' }}">
+        {{ '+' if a.diff > 0 else '' }}${{ '%.2f' % a.diff }}
+      </td>
+      <td>
+        {% if a.resolved %}
+          <span class="badge">Resolved by {{ a.resolved_by }} — {{ a.resolved_at }}</span>
+        {% else %}
+          <span class="badge badge-open">Unresolved</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if not a.resolved %}
+        <form method="post" action="{{ url_for('resolve_alert', alert_id=a.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-ghost btn-sm">Mark Resolved</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-msg">No discrepancy alerts yet — all shifts have closed cleanly.</p>
+  {% endif %}
+</div>
+{% endblock %}

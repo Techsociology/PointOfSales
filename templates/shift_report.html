@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Shift #{{ shift.id }} Report — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel narrow">
+  <a href="{{ url_for('shifts_list') }}" class="back-link">&larr; Back to shifts</a>
+
+  <div class="ticket-paper standalone">
+    <div class="ticket-head">
+      <div class="ticket-title">SHIFT #{{ shift.id }} REPORT</div>
+      <div class="ticket-shift">
+        Opened {{ shift.opened_at }} by {{ shift.opened_by or '—' }}<br>
+        {% if shift.closed_at %}Closed {{ shift.closed_at }} by {{ shift.closed_by or '—' }}{% else %}<strong>Still open</strong>{% endif %}
+      </div>
+    </div>
+    <div class="ticket-divider"></div>
+
+    <div class="report-stats">
+      <div class="stat"><span class="stat-label">Orders</span><span class="stat-value">{{ order_count }}</span></div>
+      <div class="stat"><span class="stat-label">Total Sales (incl. tips)</span><span class="stat-value">${{ '%.2f' % total_sales }}</span></div>
+      <div class="stat"><span class="stat-label">Expected Tips</span><span class="stat-value stat-amber">${{ '%.2f' % total_tips }}</span></div>
+      <div class="stat"><span class="stat-label">Expected Card Sales</span><span class="stat-value stat-amber">${{ '%.2f' % card_sales }}</span></div>
+      <div class="stat"><span class="stat-label">Starting Cash</span><span class="stat-value">${{ '%.2f' % shift.starting_cash }}</span></div>
+      <div class="stat"><span class="stat-label">Expected Cash in Drawer</span><span class="stat-value">${{ '%.2f' % expected_cash }}</span></div>
+      {% if shift.ending_cash is not none %}
+      <div class="stat"><span class="stat-label">Counted Cash</span><span class="stat-value">${{ '%.2f' % shift.ending_cash }}</span></div>
+      <div class="stat"><span class="stat-label">Cash Difference</span>
+        <span class="stat-value {{ 'diff-bad' if (shift.ending_cash - expected_cash)|round(2) != 0 else 'diff-ok' }}">
+          {{ '+' if shift.ending_cash >= expected_cash else '' }}${{ '%.2f' % (shift.ending_cash - expected_cash) }}
+        </span>
+      </div>
+      {% endif %}
+      <div class="stat"><span class="stat-label">Voided Orders</span><span class="stat-value {% if voided_orders %}diff-bad{% endif %}">{{ voided_orders|length }}</span></div>
+    </div>
+
+    <div class="ticket-divider"></div>
+    <div class="ticket-title" style="font-size:13px;">SALES BY PAYMENT METHOD</div>
+    <div class="ticket-items">
+      {% set all_methods = by_payment_sales.keys() | list %}
+      {% if all_methods %}
+        {% for method in all_methods %}
+        {% set sales = by_payment_sales[method] %}
+        {% set tips  = by_payment_tips.get(method, 0) %}
+        <div class="ti-row">
+          <span>{{ method | replace('_', ' ') | capitalize }}</span>
+          <span>${{ '%.2f' % (sales + tips) }}</span>
+        </div>
+        <div class="ti-row" style="font-size:11px; padding-left:14px; color:var(--text-dim);">
+          <span>drinks ${{ '%.2f' % sales }}{% if tips %} + tips ${{ '%.2f' % tips }}{% endif %}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="ticket-empty">No sales recorded.</div>
+      {% endif %}
+    </div>
+
+    <div class="ticket-divider"></div>
+    <div class="ticket-title" style="font-size:13px;">ITEMS SOLD (ALL SERVERS)</div>
+    <div class="ticket-items">
+      {% for name, data in product_breakdown %}
+      <div class="ti-row"><span>{{ data.qty }}&times; {{ name }}</span><span>${{ '%.2f' % data.total }}</span></div>
+      {% else %}
+      <div class="ticket-empty">No items recorded.</div>
+      {% endfor %}
+    </div>
+
+    {% if by_server %}
+    <div class="ticket-divider"></div>
+    <div class="ticket-title" style="font-size:13px;">BREAKDOWN BY SERVER</div>
+    {% for srv, data in by_server.items() %}
+    <div style="margin-top:12px;">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--amber);margin-bottom:4px;">
+        {{ srv }}
+      </div>
+      <div class="ti-row" style="font-size:12px;">
+        <span>Orders</span><span>{{ data.orders }}</span>
+      </div>
+      <div class="ti-row" style="font-size:12px;">
+        <span>Sales</span><span>${{ '%.2f' % data.sales }}</span>
+      </div>
+      <div class="ti-row" style="font-size:12px;">
+        <span>Tips</span><span>${{ '%.2f' % data.tips }}</span>
+      </div>
+      {% if data.sold %}
+      <div style="margin-top:6px;padding-left:10px;border-left:2px solid var(--wood-line);">
+        {% for name, idata in data.sold %}
+        <div class="ti-row" style="font-size:12px;color:var(--text-dim);">
+          <span>{{ idata.qty }}&times; {{ name }}</span><span>${{ '%.2f' % idata.total }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+  </div>
+
+  <div class="print-hint">
+    <button class="btn btn-ghost" onclick="window.print()">Print this report</button>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Products — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel">
+  <div class="panel-head">
+    <h2>Manage Products &amp; Modifiers</h2>
+  </div>
+
+  <div class="admin-grid">
+    <div class="admin-col">
+      <h3>Add Category</h3>
+      <form method="post" action="{{ url_for('add_category') }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="name" placeholder="e.g. Wine" required>
+        <button type="submit" class="btn btn-amber btn-sm">Add</button>
+      </form>
+
+      <h3 style="margin-top:24px;">Add Product</h3>
+      <form method="post" action="{{ url_for('add_product') }}" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Name <input type="text" name="name" required></label>
+        <label>Price <input type="number" step="0.01" min="0" name="price" required></label>
+        <label>Category
+          <select name="category_id">
+            <option value="">— none —</option>
+            {% for c in categories %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="btn btn-amber">Add Product</button>
+      </form>
+    </div>
+
+    <div class="admin-col wide">
+      <h3>Products</h3>
+      {% for p in products %}
+      <div class="product-admin-card {% if not p.active %}inactive{% endif %}">
+        <div class="pac-head">
+          <div>
+            <strong>{{ p.name }}</strong>
+            <span class="login-sub">{{ p.category_name or 'uncategorized' }} · ${{ '%.2f' % p.price }}</span>
+          </div>
+          <div class="pac-actions">
+            <button type="button" class="btn btn-ghost btn-sm pac-edit-toggle" data-target="edit-{{ p.id }}">Edit</button>
+            <form method="post" action="{{ url_for('toggle_product', product_id=p.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-ghost btn-sm">{{ 'Enable' if not p.active else 'Disable' }}</button>
+            </form>
+            <form method="post" action="{{ url_for('delete_product', product_id=p.id) }}" onsubmit="return confirm('Delete this product and its modifiers?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
+          </div>
+        </div>
+
+        <form method="post" action="{{ url_for('edit_product', product_id=p.id) }}" class="inline-form pac-edit-form" id="edit-{{ p.id }}" style="display:none;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="text" name="name" value="{{ p.name }}" required>
+          <input type="number" step="0.01" min="0" name="price" value="{{ p.price }}" required style="width:100px;">
+          <select name="category_id">
+            <option value="">— none —</option>
+            {% for c in categories %}
+            <option value="{{ c.id }}" {% if c.id == p.category_id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-amber btn-sm">Save</button>
+        </form>
+
+        <div class="pac-mods">
+          {% for m in mods_by_product.get(p.id, []) %}
+          <span class="mod-chip">
+            {{ m.name }} ({{ '+' if m.price_delta >= 0 else '' }}${{ '%.2f' % m.price_delta }})
+            <form method="post" action="{{ url_for('delete_modifier', modifier_id=m.id) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="chip-x" title="Remove modifier">&times;</button>
+            </form>
+          </span>
+          {% endfor %}
+        </div>
+        <form method="post" action="{{ url_for('add_modifier', product_id=p.id) }}" class="inline-form pac-add-mod">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="text" name="name" placeholder="Modifier name (e.g. Extra Shot)" required>
+          <input type="number" name="price_delta" step="0.01" placeholder="+price" style="width:90px;">
+          <button type="submit" class="btn btn-ghost btn-sm">+ Modifier</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+document.querySelectorAll(".pac-edit-toggle").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var form = document.getElementById(btn.dataset.target);
+    form.style.display = form.style.display === "none" ? "flex" : "none";
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}Register — Home Bar POS{% endblock %}
+{% block content %}
+
+{% if not shift %}
+<div class="shift-gate">
+  <div class="shift-gate-card">
+    <div class="login-mark">&#9673;</div>
+    <h2>No shift is open</h2>
+    <p class="login-sub">Open a shift to start ringing up orders.</p>
+    <form method="post" action="{{ url_for('open_shift') }}" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Starting cash in the drawer
+        <input type="number" name="starting_cash" step="0.01" min="0" value="0" required>
+      </label>
+      <button type="submit" class="btn btn-amber btn-block">Open Shift</button>
+    </form>
+  </div>
+</div>
+{% else %}
+
+<!-- Ticket tabs bar -->
+<div class="ticket-tabs-bar" id="ticketTabsBar">
+  <div class="ticket-tabs" id="ticketTabs"></div>
+  <button type="button" class="btn btn-amber ticket-new-btn" id="newTicketBtn" title="New tab">+ New Tab</button>
+</div>
+
+<div class="register-layout">
+  <section class="catalog">
+    <div class="cat-tabs" id="catTabs">
+      <button class="cat-tab active" data-cat="all">All</button>
+      {% for c in categories %}
+      <button class="cat-tab" data-cat="{{ c.id }}">{{ c.name }}</button>
+      {% endfor %}
+    </div>
+    <div class="product-grid" id="productGrid"></div>
+  </section>
+
+  <aside class="ticket">
+    <div class="ticket-paper">
+      <div class="ticket-head">
+        <div class="ticket-title" id="ticketTitle">ORDER TICKET</div>
+        <div class="ticket-shift">Shift #{{ shift.id }} · opened {{ shift.opened_at }}</div>
+      </div>
+      <div class="ticket-divider"></div>
+      <div class="ticket-items" id="ticketItems">
+        <div class="ticket-empty">No items yet — tap a drink to add it.</div>
+      </div>
+      <div class="ticket-divider"></div>
+      <div class="ticket-total-row">
+        <span>TOTAL</span>
+        <span id="ticketTotal">$0.00</span>
+      </div>
+
+      <!-- Split indicator -->
+      <div id="splitIndicator" class="split-indicator" style="display:none;"></div>
+
+      <div class="ticket-pay">
+        <label class="pay-label">Payment method</label>
+        <div class="pay-options">
+          <button type="button" class="pay-opt active" data-pay="cash">Cash</button>
+          <button type="button" class="pay-opt" data-pay="card">Card{% if card_reader_live %} 💳{% endif %}</button>
+          <button type="button" class="pay-opt" data-pay="other">Other</button>
+        </div>
+      </div>
+      <div class="ticket-tip">
+        <label class="pay-label">Tip</label>
+        <div class="tip-options">
+          <button type="button" class="tip-preset" data-pct="0">No tip</button>
+          <button type="button" class="tip-preset" data-pct="10">10%</button>
+          <button type="button" class="tip-preset" data-pct="15">15%</button>
+          <button type="button" class="tip-preset" data-pct="20">20%</button>
+        </div>
+        <div class="tip-custom-row">
+          <span class="pay-label" style="margin-top:6px;">Custom $</span>
+          <input type="number" id="tipCustom" min="0" step="0.01" placeholder="0.00" style="width:90px;padding:6px 8px;font-size:13px;">
+        </div>
+        <div class="tip-amount-row">Tip: <strong id="tipDisplay">$0.00</strong></div>
+      </div>
+
+      <!-- Extra tab actions (note / rename / split) -->
+      <div class="ticket-tab-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="noteBtn">📝 Note</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="renameTabBtn" style="display:none;" title="Rename this tab">✏️ Rename</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="splitBtn">⚡ Split</button>
+      </div>
+
+      <div class="ticket-actions">
+        <button type="button" class="btn btn-ghost" id="clearCartBtn">Clear</button>
+        <button type="button" class="btn btn-amber btn-block" id="chargeBtn">Charge &amp; Print Ticket</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div class="ticket-actions-below">
+  <form method="post" action="{{ url_for('close_shift') }}" onsubmit="return confirmClose(this);" class="close-shift-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="shift-stats-bar">
+      <span class="shift-stat">💵 Cash: <strong>${{ '%.2f' % expected_cash }}</strong></span>
+      <span class="shift-stat">💳 Card: <strong>${{ '%.2f' % expected_card_sales }}</strong></span>
+      <span class="shift-stat">🎁 Tips: <strong>${{ '%.2f' % expected_tips }}</strong></span>
+    </div>
+    <input type="number" name="ending_cash" step="0.01" min="0" placeholder="Counted cash in drawer" required>
+    {% if session.get('role') == 'admin' %}
+    <label class="force-check" title="Override tab and cash-mismatch blocks — use only after reviewing alerts">
+      <input type="checkbox" name="force" value="1"> Force close
+    </label>
+    {% endif %}
+    <button type="submit" class="btn btn-danger">Close Shift</button>
+  </form>
+</div>
+<p class="close-shift-note">Counted cash must match expected amount. Open tabs must be checked out first.</p>
+<script>
+function confirmClose(form) {
+  var force = form.querySelector('[name="force"]');
+  if (force && force.checked) {
+    return confirm('Force-close will discard open tabs and override the cash check. Continue?');
+  }
+  return confirm('Close the current shift and view the report?');
+}
+</script>
+
+<!-- ===================== MODALS ===================== -->
+
+<!-- Modifier picker modal -->
+<div class="modal-backdrop" id="modifierModal">
+  <div class="modal-card">
+    <h3 id="modProductName">Product</h3>
+    <p class="login-sub" id="modBasePrice"></p>
+    <div id="modList" class="mod-list"></div>
+    <div class="qty-row">
+      <label>Quantity</label>
+      <div class="qty-stepper">
+        <button type="button" id="qtyMinus">&minus;</button>
+        <span id="qtyValue">1</span>
+        <button type="button" id="qtyPlus">+</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="modCancel">Cancel</button>
+      <button type="button" class="btn btn-amber" id="modAdd">Add to Ticket</button>
+    </div>
+  </div>
+</div>
+
+<!-- New tab modal -->
+<div class="modal-backdrop" id="newTicketModal">
+  <div class="modal-card">
+    <h3>New Tab</h3>
+    <p class="login-sub">Name this tab — or pick a saved name.</p>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <select id="newTicketFromCard" style="flex:1;padding:8px 10px;font-size:14px;">
+        <option value="">— pick a saved name —</option>
+      </select>
+      <button type="button" class="btn btn-ghost btn-sm" id="manageCardNamesBtn" title="Manage saved names">✏️ Edit</button>
+    </div>
+    <input type="text" id="newTicketLabel" placeholder="Tab name (e.g. John, Table 4)" maxlength="40"
+           style="width:100%;padding:8px 10px;font-size:15px;margin-bottom:12px;">
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="newTicketCancel">Cancel</button>
+      <button type="button" class="btn btn-amber" id="newTicketConfirm">Open Tab</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename tab modal -->
+<div class="modal-backdrop" id="renameModal">
+  <div class="modal-card">
+    <h3>Rename Tab</h3>
+    <p class="login-sub">Change the label, or pick a saved name.</p>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <select id="renameFromCard" style="flex:1;padding:8px 10px;font-size:14px;">
+        <option value="">— pick a saved name —</option>
+      </select>
+      <button type="button" class="btn btn-ghost btn-sm" id="manageCardNamesBtnRename" title="Manage saved names">✏️ Edit</button>
+    </div>
+    <input type="text" id="renameTabInput" placeholder="New tab name" maxlength="40"
+           style="width:100%;padding:8px 10px;font-size:15px;margin-bottom:12px;">
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="renameTabCancel">Cancel</button>
+      <button type="button" class="btn btn-amber" id="renameTabConfirm">Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- Order note modal -->
+<div class="modal-backdrop" id="noteModal">
+  <div class="modal-card">
+    <h3 id="noteModalTitle">Order Note</h3>
+    <p class="login-sub">Add a note (allergy, seat number, special request…)</p>
+    <textarea id="noteInput" rows="4" placeholder="e.g. no ice, seat 7, allergic to nuts…"
+              style="width:100%;padding:10px;font-size:14px;font-family:inherit;background:var(--bg);border:1px solid var(--wood-line);color:var(--text);border-radius:8px;resize:vertical;margin-bottom:12px;"></textarea>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="noteCancel">Cancel</button>
+      <button type="button" class="btn btn-amber" id="noteSave">Save Note</button>
+    </div>
+  </div>
+</div>
+
+<!-- Split payment modal -->
+<div class="modal-backdrop" id="splitModal">
+  <div class="modal-card">
+    <h3>Split Payment</h3>
+    <p class="login-sub">Total: <strong id="splitTotal">$0.00</strong></p>
+    <div id="splitRows" class="split-rows"></div>
+    <div id="splitBalance" class="split-balance bad">Remaining: $0.00</div>
+    <div style="display:flex;gap:8px;margin:8px 0;">
+      <button type="button" class="btn btn-ghost btn-sm" id="splitAddRow">+ Add split</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="splitRefresh" title="Redistribute evenly">⟳ Even split</button>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="splitCancel">Cancel</button>
+      <button type="button" class="btn btn-amber" id="splitConfirm">Confirm Split</button>
+    </div>
+  </div>
+</div>
+
+<!-- Saved Names modal -->
+<div class="modal-backdrop" id="cardNamesModal">
+  <div class="modal-card">
+    <h3>Saved Names</h3>
+    <p class="login-sub">Add names here to quickly pick them when opening or renaming a tab.</p>
+    <div class="inline-form" style="margin-bottom:14px;">
+      <input type="text" id="cardNameInput" placeholder="Add a name…" maxlength="60" style="flex:1;">
+      <button type="button" class="btn btn-amber" id="cardNameAdd">Add</button>
+    </div>
+    <div id="cardNamesList" style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;"></div>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button type="button" class="btn btn-ghost" id="cardNamesClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename button visibility is handled by syncTicketPaymentUI in app.js -->
+
+<!-- Card Reader charging modal -->
+<div id="cardReaderModal" class="modal" style="display:none;">
+  <div class="modal-box" style="max-width:360px;text-align:center;">
+    <h3 style="margin-bottom:8px;">💳 Card Reader</h3>
+    <p id="cardReaderStatus" style="color:var(--text-dim);font-size:14px;margin-bottom:20px;">Sending to reader…</p>
+    <div id="cardReaderSpinner" style="font-size:28px;margin-bottom:16px;">⏳</div>
+    <div id="cardReaderTestBtns" style="display:none;margin-bottom:16px;">
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Simulated reader — pick a test card:</p>
+      <button type="button" class="btn btn-amber btn-sm" id="crSimSuccess">✅ Success (Visa)</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="crSimDecline" style="margin-top:6px;">❌ Declined</button>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" id="cardReaderCancel">Cancel</button>
+  </div>
+</div>
+
+<script>window.__PRODUCTS__     = {{ products_json | safe }};</script>
+<script>window.__OPEN_TICKETS__ = {{ open_tickets | tojson | safe }};</script>
+<script>window.__CURRENT_USER__ = {{ session.get('username') | tojson | safe }};</script>
+<script>
+  window.__CARD_READER_LIVE__ = {{ 'true' if card_reader_live else 'false' }};
+  window.__CARD_READER_TYPE__ = {{ card_reader_type | tojson | safe }};
+</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endif %}
+{% endblock %}

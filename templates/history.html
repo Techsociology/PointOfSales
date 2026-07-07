@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}History — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel">
+  <div class="panel-head">
+    <h2>Order History</h2>
+  </div>
+
+  <form method="get" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;">
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
+      Date
+      <input type="date" name="date" value="{{ date_filter }}" style="padding:6px 10px;font-size:13px;">
+    </label>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
+      Server
+      <select name="server" style="padding:6px 10px;font-size:13px;min-width:130px;">
+        <option value="">All servers</option>
+        {% for s in servers %}
+        <option value="{{ s }}" {% if s == server_filter %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
+      Payment
+      <select name="payment" style="padding:6px 10px;font-size:13px;min-width:130px;">
+        <option value="">All payments</option>
+        {% for p in payments %}
+        <option value="{{ p }}" {% if p == payment_filter %}selected{% endif %}>{{ p|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-amber" style="align-self:flex-end;">Filter</button>
+    {% if date_filter or server_filter or payment_filter %}
+    <a href="{{ url_for('history') }}" class="btn btn-ghost" style="align-self:flex-end;">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if orders %}
+  <table class="data-table">
+    <thead>
+      <tr><th>#</th><th>Date/Time</th><th>Server</th><th>Payment</th><th>Total</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td>{{ o.id }}</td>
+        <td>{{ o.created_at }}</td>
+        <td>{{ o.created_by or '—' }}</td>
+        <td><span class="badge">{{ o.payment_method }}</span>{% if o.voided %} <span class="badge badge-voided">VOID</span>{% endif %}</td>
+        <td class="num">${{ '%.2f' % o.total }}</td>
+        <td><a href="{{ url_for('order_detail', order_id=o.id) }}" class="btn btn-ghost btn-sm">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-msg">No orders found for this filter.</p>
+  {% endif %}
+</div>
+{% endblock %}

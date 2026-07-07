@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Home Bar POS{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-mark">&#9673;</div>
+    <h1>THE BAR<span class="brand-sub">POS</span></h1>
+    <p class="login-sub">Sign in to open the register</p>
+    <form method="post" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Username
+        <input type="text" name="username" autocomplete="username" required autofocus>
+      </label>
+      <label>Password
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="btn btn-amber btn-block">Sign In</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

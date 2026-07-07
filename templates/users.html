@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Users — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel narrow">
+  <div class="panel-head">
+    <h2>Users</h2>
+  </div>
+
+  <table class="data-table">
+    <thead><tr><th>Username</th><th>Role</th><th>Reset Password</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.role }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_reset_password', user_id=u.id) }}"
+              class="inline-form" style="gap:6px;"
+              onsubmit="return confirm('Reset password for {{ u.username }}?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="password" name="new_password" placeholder="New password" minlength="4"
+                 style="width:140px; padding:5px 8px; font-size:12px;" required>
+          <button type="submit" class="btn btn-ghost" style="padding:4px 10px; font-size:12px;">Set</button>
+        </form>
+      </td>
+      <td>
+        {% if u.id != session.get('user_id') %}
+        <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}"
+              onsubmit="return confirm('Delete user {{ u.username }}?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-danger" style="padding:4px 10px; font-size:12px;">Delete</button>
+        </form>
+        {% else %}
+        <span style="font-size:11px; color:var(--text-dim);">(you)</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--wood-line);">
+    <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-dim); margin-bottom:12px;">Add User</h3>
+    <form method="post" action="{{ url_for('add_user') }}" class="inline-form" style="flex-wrap:wrap; gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="username" placeholder="Username" required style="flex:1; min-width:120px;">
+      <input type="password" name="password" placeholder="Password" required minlength="4" style="flex:1; min-width:120px;">
+      <select name="role" style="padding:8px 10px;">
+        <option value="staff">Staff</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button type="submit" class="btn btn-amber">Add User</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

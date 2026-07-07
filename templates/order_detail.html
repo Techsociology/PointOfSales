@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Order #{{ order.id }} — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel narrow">
+  <a href="{{ url_for('history') }}" class="back-link">&larr; Back to history</a>
+
+  {% if order.voided %}
+  <div class="flash flash-error" style="margin-bottom:12px;">
+    ⚠ This order was VOIDED on {{ order.voided_at }} by {{ order.voided_by }}.
+    {% if order.void_reason %}Reason: {{ order.void_reason }}{% endif %}
+    It does not count toward sales or cash totals.
+  </div>
+  {% endif %}
+
+  <div class="ticket-paper standalone">
+    <div class="ticket-head">
+      <div class="ticket-title">ORDER #{{ order.id }}{% if order.voided %} — VOIDED{% endif %}</div>
+      <div class="ticket-shift">{{ order.created_at }} · {{ order.created_by or 'unknown' }}</div>
+    </div>
+    <div class="ticket-divider"></div>
+    <div class="ticket-items">
+      {% for it in items %}
+      <div class="ticket-item">
+        <div class="ti-row">
+          <span>{{ it.quantity }}&times; {{ it.product_name }}</span>
+          <span>${{ '%.2f' % it.line_total }}</span>
+        </div>
+        {% for m in it.modifiers %}
+        <div class="ti-mod">+ {{ m.name }}{% if m.price_delta %} (${{ '%.2f' % m.price_delta }}){% endif %}</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="ticket-divider"></div>
+    {% set subtotal = order.total - order.tip %}
+    {% if order.tip %}
+    <div class="ti-row" style="font-size:13px; margin-bottom:4px; color: var(--text-dim);">
+      <span>Subtotal</span><span>${{ '%.2f' % subtotal }}</span>
+    </div>
+    <div class="ti-row" style="font-size:13px; margin-bottom:8px; color: var(--text-dim);">
+      <span>Tip</span><span>${{ '%.2f' % order.tip }}</span>
+    </div>
+    {% endif %}
+    <div class="ticket-total-row">
+      <span>TOTAL</span>
+      <span>${{ '%.2f' % order.total }}</span>
+    </div>
+    <p class="login-sub" style="text-align:center;margin-top:8px;">Paid by {{ order.payment_method }}</p>
+    {% if order.note %}<p class="login-sub" style="text-align:center;">{{ order.note }}</p>{% endif %}
+  </div>
+
+  <div class="print-hint">
+    <button class="btn btn-ghost" onclick="window.print()">Print this ticket</button>
+    {% if session.get('role') == 'admin' and not order.voided %}
+    <button type="button" class="btn btn-danger" id="voidToggleBtn" style="margin-left:10px;">Void This Order</button>
+    {% endif %}
+  </div>
+
+  {% if session.get('role') == 'admin' and not order.voided %}
+  <div id="voidPanel" style="display:none; margin-top:16px; background:var(--bg-panel-2); border:1px solid #6e3323; border-radius:10px; padding:16px;">
+    <p style="color:#e3a08d; margin:0 0 10px; font-size:14px;"><strong>Void Order #{{ order.id }}?</strong> This removes it from all sales and cash totals immediately. This cannot be undone.</p>
+    <form method="post" action="{{ url_for('void_order', order_id=order.id) }}" class="inline-form" style="flex-wrap:wrap; gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="reason" placeholder="Reason (optional)" style="flex:1; min-width:180px;">
+      <button type="submit" class="btn btn-danger">Confirm Void</button>
+      <button type="button" class="btn btn-ghost" id="voidCancelBtn">Cancel</button>
+    </form>
+  </div>
+  <script>
+    document.getElementById("voidToggleBtn").addEventListener("click", function() {
+      document.getElementById("voidPanel").style.display = "block";
+    });
+    document.getElementById("voidCancelBtn").addEventListener("click", function() {
+      document.getElementById("voidPanel").style.display = "none";
+    });
+  </script>
+  {% endif %}
+</div>
+{% endblock %}

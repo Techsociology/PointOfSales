@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Card Reader — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel narrow">
+  <div class="panel-head">
+    <h2>POS Card Reader</h2>
+  </div>
+  <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+    Connect a physical card reader to charge cards automatically.
+    Supports <strong>Stripe Terminal</strong> and <strong>Square Terminal</strong>.
+  </p>
+
+
+
+  <form method="post" class="stack" style="max-width:480px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="flex-direction:row; align-items:center; gap:10px; font-size:14px;">
+      <input type="checkbox" name="enabled" {% if settings.enabled == '1' %}checked{% endif %}
+             style="width:18px; height:18px; accent-color:var(--amber);">
+      Enable card reader integration
+    </label>
+
+    <label>Reader type
+      <select name="reader_type" id="readerTypeSelect">
+        <option value="stripe" {% if settings.type == 'stripe' %}selected{% endif %}>Stripe Terminal</option>
+        <option value="square" {% if settings.type == 'square' %}selected{% endif %}>Square Terminal</option>
+      </select>
+    </label>
+
+    <!-- Stripe fields -->
+    <div id="stripeFields" style="display:none;">
+      <label>Secret API key
+        {% if settings.api_key_saved %}
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="password" name="api_key" id="apiKeyInput"
+                 value="{{ settings.api_key }}" autocomplete="off" style="flex:1;">
+          <button type="button" class="btn btn-ghost btn-sm" id="clearApiKeyBtn"
+                  title="Remove saved key">Clear</button>
+        </div>
+        <span style="font-size:11px; color:var(--text-dim);">
+          A key is saved. Leave as-is to keep it, or type a new one to replace it.
+          The real key is never shown here for security.
+        </span>
+        {% else %}
+        <input type="password" name="api_key" id="apiKeyInput"
+               placeholder="sk_live_... or sk_test_..." autocomplete="off">
+        <span style="font-size:11px; color:var(--text-dim);">
+          Stripe dashboard → Developers → API keys. Keep confidential.
+        </span>
+        {% endif %}
+      </label>
+      <label>Reader ID
+        <input type="text" name="reader_id" value="{{ settings.reader_id }}"
+               placeholder="tmr_xxxxxxxxxxxx">
+        <span style="font-size:11px; color:var(--text-dim);">
+          Stripe Terminal dashboard → Readers. Starts with <code>tmr_</code>.
+        </span>
+      </label>
+    </div>
+
+    <!-- Square fields -->
+    <div id="squareFields" style="display:none;">
+      <label>Square Access Token
+        {% if settings.api_key_saved %}
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="password" name="api_key" id="apiKeyInputSq"
+                 value="{{ settings.api_key }}" autocomplete="off" style="flex:1;">
+          <button type="button" class="btn btn-ghost btn-sm" id="clearApiKeyBtnSq"
+                  title="Remove saved key">Clear</button>
+        </div>
+        <span style="font-size:11px; color:var(--text-dim);">
+          A token is saved. Leave as-is to keep it, or type a new one to replace it.
+        </span>
+        {% else %}
+        <input type="password" name="api_key" id="apiKeyInputSq"
+               placeholder="EAAAl..." autocomplete="off">
+        <span style="font-size:11px; color:var(--text-dim);">
+          Square Developer Dashboard → Applications → your app → Production Access Token.
+        </span>
+        {% endif %}
+      </label>
+      <label>Square Device ID
+        <input type="text" name="reader_id" value="{{ settings.reader_id }}"
+               placeholder="device:xxxxxxxxxxxx">
+        <span style="font-size:11px; color:var(--text-dim);">
+          Square Dashboard → Devices. Select your Terminal → Device ID.
+        </span>
+      </label>
+    </div>
+
+    <!-- Hidden field: if set to "1", the backend will erase the saved API key -->
+    <input type="hidden" name="clear_api_key" id="clearApiKeyField" value="0">
+    <button type="submit" class="btn btn-amber">Save Settings</button>
+  </form>
+
+  <!-- Reader connection status -->
+  <div id="readerStatusBar" style="display:none; margin-top:18px; padding:12px 16px; border-radius:8px; font-size:13px; font-weight:600; display:flex; align-items:center; gap:10px;">
+    <span id="readerStatusDot" style="font-size:18px;"></span>
+    <span id="readerStatusText"></span>
+    <button type="button" id="readerCheckBtn" class="btn btn-ghost btn-sm" style="margin-left:auto;">Check again</button>
+  </div>
+
+  <!-- Square Terminal: receipts & testing -->
+  <div id="squareInfo" style="display:none; margin-top:24px; padding-top:20px; border-top:1px solid var(--wood-line);">
+    <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-dim);">Square Terminal — What You Need to Know</h3>
+
+    <div style="margin-bottom:16px;">
+      <p style="font-size:13px; color:var(--text-dim); font-weight:600; margin-bottom:4px;">📄 Receipts after payment</p>
+      <p style="font-size:13px; color:var(--text-dim); line-height:1.6; margin:0;">
+        Yes — Square Terminal prints a receipt automatically after every card payment <em>if</em> a receipt printer is paired to the device.
+        The Square Terminal (hardware) has a built-in receipt printer; it prints immediately once the charge is captured.
+        You can also configure Square to prompt the customer: <em>Print / Email / No receipt</em>.
+        The app's own "Print this ticket" button (on the order detail page) is a separate browser print — that's for your kitchen/bar copy, not the card receipt.
+      </p>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <p style="font-size:13px; color:var(--text-dim); font-weight:600; margin-bottom:4px;">🧪 Testing without a card reader</p>
+      <p style="font-size:13px; color:var(--text-dim); line-height:1.6; margin:0;">
+        Square provides a <strong>Sandbox environment</strong> — no real reader needed:
+      </p>
+      <ol style="color:var(--text-dim); font-size:13px; line-height:1.8; padding-left:18px; margin-top:6px;">
+        <li>Sign up free at <a href="https://developer.squareup.com" target="_blank" rel="noopener">developer.squareup.com</a></li>
+        <li>Create an application and grab your <em>Sandbox Access Token</em></li>
+        <li>Use the Square <em>Terminal API</em> with <code>"action": "CHECKOUT"</code> — in sandbox mode a virtual terminal completes the payment without hardware</li>
+        <li>Test card numbers: <code>4111 1111 1111 1111</code> (Visa), any future expiry, any CVV</li>
+        <li>Switch to Production tokens + a real Device ID when you buy the hardware</li>
+      </ol>
+      <p style="font-size:12px; color:var(--text-dim); margin-top:8px;">
+        Square Terminal hardware starts at ~$299 (Terminal) or ~$49 (Reader S2 for phone/tablet).
+        Docs: <a href="https://developer.squareup.com/docs/terminal-api/overview" target="_blank" rel="noopener">developer.squareup.com/docs/terminal-api</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Stripe flow -->
+  <div id="stripeInfo" style="display:none; margin-top:24px; padding-top:20px; border-top:1px solid var(--wood-line);">
+    <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-dim);">How Stripe Terminal Works (once wired up)</h3>
+    <ol style="color:var(--text-dim); font-size:13px; line-height:1.7; padding-left:18px;">
+      <li>Staff taps <strong>Charge &amp; Print Ticket</strong> with Card selected.</li>
+      <li>The app calls Stripe Terminal to present payment on the reader.</li>
+      <li>Customer taps/inserts — Stripe authorises instantly.</li>
+      <li>Order saved as <em>card</em> payment automatically.</li>
+      <li>Tip prompt on the reader can be enabled in Stripe Terminal settings.</li>
+      <li>Stripe does <strong>not</strong> auto-print receipts — email/SMS receipt is sent by Stripe if configured. Use this app's "Print this ticket" button for a paper copy.</li>
+    </ol>
+    <p style="font-size:12px; color:var(--text-dim);">
+      Testing: use Stripe's test mode key (<code>sk_test_...</code>) and a simulated reader — no hardware required.
+      Docs: <a href="https://stripe.com/docs/terminal" target="_blank" rel="noopener">stripe.com/docs/terminal</a>
+    </p>
+  </div>
+</div>
+
+<script>
+(function() {
+  var sel     = document.getElementById("readerTypeSelect");
+  var stripeF = document.getElementById("stripeFields");
+  var squareF = document.getElementById("squareFields");
+  var stripeI = document.getElementById("stripeInfo");
+  var squareI = document.getElementById("squareInfo");
+  var statusBar  = document.getElementById("readerStatusBar");
+  var statusDot  = document.getElementById("readerStatusDot");
+  var statusText = document.getElementById("readerStatusText");
+  var checkBtn   = document.getElementById("readerCheckBtn");
+
+  function update() {
+    var v = sel.value;
+    stripeF.style.display = v === "stripe" ? "" : "none";
+    squareF.style.display = v === "square" ? "" : "none";
+    stripeI.style.display = v === "stripe" ? "" : "none";
+    squareI.style.display = v === "square" ? "" : "none";
+    if (v === "stripe") checkReaderStatus();
+    else statusBar.style.display = "none";
+  }
+  sel.addEventListener("change", update);
+
+  function checkReaderStatus() {
+    statusBar.style.display = "flex";
+    statusDot.textContent  = "⏳";
+    statusText.textContent = "Checking reader…";
+    statusBar.style.background = "var(--panel-bg, #2a2118)";
+    statusBar.style.border = "1px solid var(--wood-line)";
+
+    fetch("/api/stripe/reader-status")
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.available && d.status === "online") {
+          statusDot.textContent  = "🟢";
+          statusText.textContent = "Reader online" + (d.label ? " — " + d.label : "");
+          statusBar.style.background = "rgba(34,197,94,0.12)";
+          statusBar.style.border = "1px solid rgba(34,197,94,0.4)";
+        } else if (d.available) {
+          statusDot.textContent  = "🟡";
+          statusText.textContent = "Reader reachable but status: " + (d.status || "unknown");
+          statusBar.style.background = "rgba(234,179,8,0.12)";
+          statusBar.style.border = "1px solid rgba(234,179,8,0.4)";
+        } else {
+          statusDot.textContent  = "🔴";
+          statusText.textContent = "Reader offline — " + (d.error || "could not connect");
+          statusBar.style.background = "rgba(239,68,68,0.12)";
+          statusBar.style.border = "1px solid rgba(239,68,68,0.4)";
+        }
+      })
+      .catch(function() {
+        statusDot.textContent  = "🔴";
+        statusText.textContent = "Reader offline — network error";
+        statusBar.style.background = "rgba(239,68,68,0.12)";
+        statusBar.style.border = "1px solid rgba(239,68,68,0.4)";
+      });
+  }
+
+  checkBtn.addEventListener("click", checkReaderStatus);
+  update();
+
+  // "Clear" buttons blank the input and signal the backend to erase the key
+  ["clearApiKeyBtn", "clearApiKeyBtnSq"].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener("click", function() {
+      ["apiKeyInput", "apiKeyInputSq"].forEach(function(fid) {
+        var el = document.getElementById(fid);
+        if (el) el.value = "";
+      });
+      document.getElementById("clearApiKeyField").value = "1";
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>{% block title %}Home Bar POS{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>
+(function () {
+  var saved = localStorage.getItem("pos_theme") || "light";
+  document.documentElement.setAttribute("data-theme", saved);
+})();
+</script>
+</head>
+<body>
+{% if session.get('user_id') %}
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">&#9673;</span>
+    <span class="brand-text">THE&nbsp;BAR<span class="brand-sub">POS</span></span>
+  </div>
+  <nav class="topnav">
+    <a href="{{ url_for('pos') }}" class="{{ 'active' if request.endpoint == 'pos' }}">Register</a>
+    <a href="{{ url_for('history') }}" class="{{ 'active' if request.endpoint in ['history','order_detail'] }}">History</a>
+    <a href="{{ url_for('shifts_list') }}" class="{{ 'active' if request.endpoint in ['shifts_list','shift_report'] }}">Shifts</a>
+    {% if session.get('role') == 'admin' %}
+    <a href="{{ url_for('admin_products') }}" class="{{ 'active' if request.endpoint == 'admin_products' }}">Products</a>
+    <a href="{{ url_for('admin_users') }}" class="{{ 'active' if request.endpoint == 'admin_users' }}">Users</a>
+    <a href="{{ url_for('admin_alerts') }}" class="{{ 'active' if request.endpoint == 'admin_alerts' }}">
+      Alerts{% if unresolved_alerts %} <span class="alert-badge">{{ unresolved_alerts }}</span>{% endif %}
+    </a>
+    <a href="{{ url_for('admin_card_reader') }}" class="{{ 'active' if request.endpoint == 'admin_card_reader' }}">Card&nbsp;Reader&nbsp;<span style="font-size:10px;vertical-align:middle;opacity:0.7;">(Beta)</span></a>
+    {% endif %}
+  </nav>
+  <div class="topbar-right">
+    {% if open_shift %}
+      <span class="shift-pill open">SHIFT OPEN</span>
+    {% else %}
+      <span class="shift-pill closed">NO SHIFT</span>
+    {% endif %}
+    <div class="user-menu">
+      <button type="button" id="themeToggle" class="theme-toggle" title="Toggle light/dark theme">&#9788;</button>
+      <span class="who">{{ session.get('username') }}</span>
+      <a href="{{ url_for('change_password') }}" title="Change password">&#9881;</a>
+      <a href="{{ url_for('logout') }}" title="Log out">&#10162;</a>
+    </div>
+  </div>
+</header>
+<script>
+(function () {
+  var btn = document.getElementById("themeToggle");
+  if (!btn) return;
+  function setIcon() {
+    var isLight = document.documentElement.getAttribute("data-theme") === "light";
+    btn.textContent = isLight ? "\u263D" : "\u2600";
+  }
+  setIcon();
+  btn.addEventListener("click", function () {
+    var current = document.documentElement.getAttribute("data-theme") || "dark";
+    var next = current === "light" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("pos_theme", next);
+    setIcon();
+  });
+})();
+</script>
+{% endif %}
+
+<main class="page {% if not session.get('user_id') %}centered{% endif %}">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-stack">
+      {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

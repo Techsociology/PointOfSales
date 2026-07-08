@@ -25,12 +25,17 @@
     <a href="{{ url_for('history') }}" class="{{ 'active' if request.endpoint in ['history','order_detail'] }}">History</a>
     <a href="{{ url_for('shifts_list') }}" class="{{ 'active' if request.endpoint in ['shifts_list','shift_report'] }}">Shifts</a>
     {% if session.get('role') == 'admin' %}
-    <a href="{{ url_for('admin_products') }}" class="{{ 'active' if request.endpoint == 'admin_products' }}">Products</a>
-    <a href="{{ url_for('admin_users') }}" class="{{ 'active' if request.endpoint == 'admin_users' }}">Users</a>
-    <a href="{{ url_for('admin_alerts') }}" class="{{ 'active' if request.endpoint == 'admin_alerts' }}">
+    <a href="{{ url_for('alerts_page') }}" class="{{ 'active' if request.endpoint == 'alerts_page' }}">
       Alerts{% if unresolved_alerts %} <span class="alert-badge">{{ unresolved_alerts }}</span>{% endif %}
     </a>
+    {% else %}
+    <a href="{{ url_for('alerts_page') }}" class="{{ 'active' if request.endpoint == 'alerts_page' }}">Stock</a>
+    {% endif %}
+    {% if session.get('role') == 'admin' %}
+    <a href="{{ url_for('admin_products') }}" class="{{ 'active' if request.endpoint == 'admin_products' }}">Products</a>
+    <a href="{{ url_for('admin_users') }}" class="{{ 'active' if request.endpoint == 'admin_users' }}">Users</a>
     <a href="{{ url_for('admin_card_reader') }}" class="{{ 'active' if request.endpoint == 'admin_card_reader' }}">Card&nbsp;Reader&nbsp;<span style="font-size:10px;vertical-align:middle;opacity:0.7;">(Beta)</span></a>
+    <a href="{{ url_for('admin_receipt_printer') }}" class="{{ 'active' if request.endpoint == 'admin_receipt_printer' }}">Receipt&nbsp;Printer</a>
     {% endif %}
   </nav>
   <div class="topbar-right">

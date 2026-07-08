@@ -3,3 +3,4 @@ Werkzeug==3.0.3
 Flask-WTF==1.2.1
 waitress==3.0.0
 stripe==15.3.0
+python-escpos==3.1

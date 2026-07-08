@@ -20,6 +20,20 @@ try:
 except ImportError:
     STRIPE_AVAILABLE = False
 
+_escpos_error: str = ""
+try:
+    from escpos import printer as escpos_printer
+    ESCPOS_AVAILABLE = True
+except ImportError:
+    ESCPOS_AVAILABLE = False
+    _escpos_error = "not_installed"
+except FileNotFoundError as _e:
+    ESCPOS_AVAILABLE = False
+    _escpos_error = f"missing_data:{_e}"
+except Exception as _e:
+    ESCPOS_AVAILABLE = False
+    _escpos_error = f"error:{_e}"
+
 if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
     TEMPLATE_FOLDER = os.path.join(sys._MEIPASS, "templates")
@@ -123,10 +137,14 @@ def inject_globals():
     open_shift = get_open_shift(conn)
     unresolved_alerts = 0
     if session.get("role") == "admin":
-        row = conn.execute(
+        # Count both legacy cash_discrepancies and new unified admin_alerts
+        r1 = conn.execute(
             "SELECT COUNT(*) as cnt FROM cash_discrepancies WHERE resolved = 0"
         ).fetchone()
-        unresolved_alerts = row["cnt"]
+        r2 = conn.execute(
+            "SELECT COUNT(*) as cnt FROM admin_alerts WHERE resolved = 0"
+        ).fetchone()
+        unresolved_alerts = r1["cnt"] + r2["cnt"]
     conn.close()
     return dict(
         current_user=session.get("username"),
@@ -151,7 +169,11 @@ def login():
             session["user_id"]  = user["id"]
             session["username"] = user["username"]
             session["role"]     = user["role"]
-            next_url = request.args.get("next") or url_for("pos")
+            from urllib.parse import urlparse
+            next_url = request.args.get("next") or ""
+            # Reject anything with a host component (absolute or protocol-relative URLs)
+            if not next_url or urlparse(next_url).netloc:
+                next_url = url_for("pos")
             return redirect(next_url)
         flash("Invalid username or password.", "error")
     return render_template("login.html")
@@ -232,6 +254,11 @@ def pos():
             elif o["payment_method"] in ("card", "card_reader"):
                 card_total += o["total"]
         expected_card_sales = card_total
+
+    cr_enabled       = db.get_setting(conn, "card_reader_enabled", "0") == "1"
+    cr_type          = db.get_setting(conn, "card_reader_type", "stripe")
+    cr_key           = db.get_setting(conn, "card_reader_api_key", "")
+    card_reader_live = cr_enabled and bool(cr_key)
     conn.close()
 
     mods_by_product = {}
@@ -250,13 +277,6 @@ def pos():
         }
         for p in products
     ]
-
-    conn2 = db.get_db()
-    cr_enabled       = db.get_setting(conn2, "card_reader_enabled", "0") == "1"
-    cr_type          = db.get_setting(conn2, "card_reader_type", "stripe")
-    cr_key           = db.get_setting(conn2, "card_reader_api_key", "")
-    card_reader_live = cr_enabled and bool(cr_key)
-    conn2.close()
 
     return render_template(
         "pos.html",
@@ -295,12 +315,18 @@ def api_create_order():
     if tip < 0:
         tip = 0.0
 
+    try:
+        discount = float(data.get("discount") or 0)
+    except (TypeError, ValueError):
+        discount = 0.0
+    discount = max(0.0, discount)
+
     if not items:
         conn.close()
         return jsonify({"error": "Cart is empty."}), 400
 
     subtotal = sum(it["line_total"] for it in items)
-    total    = subtotal + tip
+    total    = max(0.0, subtotal - discount + tip)
 
     cur = conn.cursor()
 
@@ -320,9 +346,9 @@ def api_create_order():
         splits = []
 
     cur.execute(
-        "INSERT INTO orders (shift_id, created_at, created_by, total, payment_method, note, tip) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (shift["id"], db.now_iso(), session.get("username"), total, payment_method, note, tip),
+        "INSERT INTO orders (shift_id, created_at, created_by, total, payment_method, note, tip, discount) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (shift["id"], db.now_iso(), session.get("username"), total, payment_method, note, tip, discount),
     )
     order_id = cur.lastrowid
 
@@ -507,6 +533,12 @@ def api_ticket_checkout(ticket_id):
     except (TypeError, ValueError):
         tip = 0.0
 
+    try:
+        discount = float(data.get("discount") or 0)
+    except (TypeError, ValueError):
+        discount = 0.0
+    discount = max(0.0, discount)
+
     items = conn.execute(
         "SELECT * FROM ticket_items WHERE ticket_id = ?", (ticket_id,)
     ).fetchall()
@@ -515,7 +547,7 @@ def api_ticket_checkout(ticket_id):
         return jsonify({"error": "Ticket is empty."}), 400
 
     subtotal = sum(it["line_total"] for it in items)
-    total    = subtotal + max(0, tip)
+    total    = max(0.0, subtotal - discount + max(0, tip))
 
     # Build note
     base_note = f"Tab: {ticket['label']}"
@@ -535,9 +567,9 @@ def api_ticket_checkout(ticket_id):
 
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO orders (shift_id, created_at, created_by, total, payment_method, note, tip) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (shift["id"], db.now_iso(), session.get("username"), total, payment_method, base_note, tip),
+        "INSERT INTO orders (shift_id, created_at, created_by, total, payment_method, note, tip, discount) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (shift["id"], db.now_iso(), session.get("username"), total, payment_method, base_note, tip, discount),
     )
     order_id = cur.lastrowid
 
@@ -584,7 +616,10 @@ def open_shift():
         flash("A shift is already open.", "error")
         conn.close()
         return redirect(url_for("pos"))
-    starting_cash = float(request.form.get("starting_cash") or 0)
+    try:
+        starting_cash = float(request.form.get("starting_cash") or 0)
+    except ValueError:
+        starting_cash = 0.0
     conn.execute(
         "INSERT INTO shifts (opened_at, opened_by, starting_cash, status) VALUES (?, ?, ?, 'open')",
         (db.now_iso(), session.get("username"), starting_cash),
@@ -841,25 +876,39 @@ def history():
     date_filter    = request.args.get("date", "")
     server_filter  = request.args.get("server", "")
     payment_filter = request.args.get("payment", "")
+    search_query   = request.args.get("q", "").strip()
     conn = db.get_db()
 
-    # Build query dynamically
-    conditions = []
-    params     = []
-    if date_filter:
-        conditions.append("created_at LIKE ?")
-        params.append(f"{date_filter}%")
-    if server_filter:
-        conditions.append("created_by = ?")
-        params.append(server_filter)
-    if payment_filter:
-        conditions.append("payment_method = ?")
-        params.append(payment_filter)
+    if search_query:
+        # Search across product names in order_items, plus order notes
+        like = f"%{search_query}%"
+        orders = conn.execute(
+            """
+            SELECT DISTINCT o.*
+            FROM orders o
+            LEFT JOIN order_items oi ON oi.order_id = o.id
+            WHERE (oi.product_name LIKE ? OR o.note LIKE ?)
+            ORDER BY o.id DESC LIMIT 200
+            """,
+            (like, like),
+        ).fetchall()
+    else:
+        conditions = []
+        params     = []
+        if date_filter:
+            conditions.append("created_at LIKE ?")
+            params.append(f"{date_filter}%")
+        if server_filter:
+            conditions.append("created_by = ?")
+            params.append(server_filter)
+        if payment_filter:
+            conditions.append("payment_method = ?")
+            params.append(payment_filter)
 
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    orders = conn.execute(
-        f"SELECT * FROM orders {where} ORDER BY id DESC LIMIT 200", params
-    ).fetchall()
+        where  = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        orders = conn.execute(
+            f"SELECT * FROM orders {where} ORDER BY id DESC LIMIT 200", params
+        ).fetchall()
 
     # Lists for filter dropdowns
     servers  = [r["created_by"] for r in conn.execute(
@@ -876,6 +925,7 @@ def history():
         date_filter=date_filter,
         server_filter=server_filter,
         payment_filter=payment_filter,
+        search_query=search_query,
         servers=servers,
         payments=payments,
     )
@@ -964,7 +1014,11 @@ def add_category():
 @admin_required
 def add_product():
     name        = request.form.get("name", "").strip()
-    price       = float(request.form.get("price") or 0)
+    try:
+        price = float(request.form.get("price") or 0)
+    except ValueError:
+        flash("Price must be a number.", "error")
+        return redirect(url_for("admin_products"))
     category_id = request.form.get("category_id") or None
     if name:
         conn = db.get_db()
@@ -1026,8 +1080,11 @@ def delete_product(product_id):
 @app.route("/admin/product/<int:product_id>/modifier/add", methods=["POST"])
 @admin_required
 def add_modifier(product_id):
-    name        = request.form.get("name", "").strip()
-    price_delta = float(request.form.get("price_delta") or 0)
+    name = request.form.get("name", "").strip()
+    try:
+        price_delta = float(request.form.get("price_delta") or 0)
+    except ValueError:
+        price_delta = 0.0
     if name:
         conn = db.get_db()
         conn.execute(
@@ -1047,15 +1104,41 @@ def delete_modifier(modifier_id):
     conn.close()
     return redirect(url_for("admin_products"))
 
+@app.route("/alerts")
+@login_required
+def alerts_page():
+    conn     = db.get_db()
+    role     = session.get("role")
+    username = session.get("username")
+    if role == "admin":
+        cash_alerts  = conn.execute(
+            "SELECT * FROM cash_discrepancies ORDER BY resolved ASC, id DESC"
+        ).fetchall()
+        other_alerts = conn.execute(
+            "SELECT * FROM admin_alerts ORDER BY resolved ASC, id DESC"
+        ).fetchall()
+        conn.close()
+        return render_template("alerts.html", cash_alerts=cash_alerts, other_alerts=other_alerts)
+    else:
+        my_alerts = conn.execute(
+            "SELECT * FROM admin_alerts WHERE raised_by = ? ORDER BY id DESC",
+            (username,),
+        ).fetchall()
+        conn.close()
+        return render_template("staff_alerts.html", my_alerts=my_alerts)
+
 @app.route("/admin/alerts")
 @admin_required
 def admin_alerts():
-    conn   = db.get_db()
-    alerts = conn.execute(
+    conn = db.get_db()
+    cash_alerts   = conn.execute(
         "SELECT * FROM cash_discrepancies ORDER BY resolved ASC, id DESC"
     ).fetchall()
+    other_alerts  = conn.execute(
+        "SELECT * FROM admin_alerts ORDER BY resolved ASC, id DESC"
+    ).fetchall()
     conn.close()
-    return render_template("alerts.html", alerts=alerts)
+    return render_template("alerts.html", cash_alerts=cash_alerts, other_alerts=other_alerts)
 
 @app.route("/admin/alerts/<int:alert_id>/resolve", methods=["POST"])
 @admin_required
@@ -1068,7 +1151,7 @@ def resolve_alert(alert_id):
     conn.commit()
     conn.close()
     flash("Alert marked as resolved.", "success")
-    return redirect(url_for("admin_alerts"))
+    return redirect(url_for("alerts_page"))
 
 @app.route("/admin/users")
 @admin_required
@@ -1084,6 +1167,8 @@ def add_user():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
     role     = request.form.get("role", "staff")
+    if role not in ("admin", "staff"):
+        role = "staff"
     if username and password:
         conn = db.get_db()
         try:
@@ -1132,8 +1217,26 @@ def admin_reset_password(user_id):
     flash(f"Password for '{user['username']}' has been reset.", "success")
     return redirect(url_for("admin_users"))
 
-# ---- Card reader settings ----
+@app.route("/admin/users/<int:user_id>/change-role", methods=["POST"])
+@admin_required
+def change_user_role(user_id):
+    if user_id == session.get("user_id"):
+        flash("You cannot change your own role.", "error")
+        return redirect(url_for("admin_users"))
+    conn = db.get_db()
+    user = conn.execute("SELECT username, role FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        flash("User not found.", "error")
+        conn.close()
+        return redirect(url_for("admin_users"))
+    new_role = "admin" if user["role"] == "staff" else "staff"
+    conn.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
+    conn.commit()
+    conn.close()
+    flash(f"'{user['username']}' is now {new_role}.", "success")
+    return redirect(url_for("admin_users"))
 
+# ---- Card reader settings ----
 _API_KEY_PLACEHOLDER = "••••••••"   # sentinel — never stored, never a real key
 
 @app.route("/admin/card-reader", methods=["GET", "POST"])
@@ -1321,6 +1424,169 @@ def api_card_names_save():
     db.set_setting(conn, "saved_card_names", json.dumps(names))
     conn.close()
     return jsonify({"success": True, "names": names})
+
+# ---- Stock-request / bartender alerts ----
+
+@app.route("/api/alert/stock-request", methods=["POST"])
+@csrf.exempt
+@login_required
+def api_stock_request():
+    """Bartender raises a stock-request alert that admins see on the Alerts page."""
+    data  = request.get_json(force=True)
+    item  = (data.get("item") or "").strip()[:120]
+    note  = (data.get("note") or "").strip()[:300]
+    if not item:
+        return jsonify({"error": "Item name required."}), 400
+    conn  = db.get_db()
+    shift = get_open_shift(conn)
+    conn.execute(
+        "INSERT INTO admin_alerts (alert_type, title, body, raised_by, shift_id, created_at) "
+        "VALUES ('stock_request', ?, ?, ?, ?, ?)",
+        (
+            f"Stock request: {item}",
+            note or None,
+            session.get("username"),
+            shift["id"] if shift else None,
+            db.now_iso(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route("/admin/alerts/<int:alert_id>/resolve-unified", methods=["POST"])
+@admin_required
+def resolve_unified_alert(alert_id):
+    conn = db.get_db()
+    conn.execute(
+        "UPDATE admin_alerts SET resolved = 1, resolved_by = ?, resolved_at = ? WHERE id = ?",
+        (session.get("username"), db.now_iso(), alert_id),
+    )
+    conn.commit()
+    conn.close()
+    flash("Alert marked as resolved.", "success")
+    return redirect(url_for("alerts_page"))
+
+# ---- Receipt printing ----
+
+@app.route("/api/print-receipt/<int:order_id>", methods=["POST"])
+@csrf.exempt
+@login_required
+def print_receipt(order_id):
+    """
+    Print a receipt to a configured ESC/POS thermal printer.
+    Printer connection is read from settings:
+      receipt_printer_type  : 'network' | 'usb' | 'file' (default 'file' = OS default)
+      receipt_printer_host  : IP address (network mode)
+      receipt_printer_port  : port, default 9100 (network mode)
+      receipt_printer_vendor: USB vendor id hex e.g. '04b8' (usb mode)
+      receipt_printer_product: USB product id hex e.g. '0202' (usb mode)
+    """
+    conn  = db.get_db()
+    order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    items = conn.execute(
+        "SELECT * FROM order_items WHERE order_id = ?", (order_id,)
+    ).fetchall()
+    printer_type = db.get_setting(conn, "receipt_printer_type", "file")
+    printer_host = db.get_setting(conn, "receipt_printer_host", "")
+    printer_port = int(db.get_setting(conn, "receipt_printer_port", "9100") or 9100)
+    printer_vendor  = db.get_setting(conn, "receipt_printer_vendor", "")
+    printer_product = db.get_setting(conn, "receipt_printer_product", "")
+    conn.close()
+
+    if not order:
+        return jsonify({"error": "Order not found."}), 404
+
+    if not ESCPOS_AVAILABLE:
+        if _escpos_error == "not_installed":
+            msg = "python-escpos is not installed. Run: pip install python-escpos  then restart."
+        elif _escpos_error.startswith("missing_data"):
+            msg = ("python-escpos is installed but its capabilities.json data file is missing "
+                   "from the bundle. Re-run build_exe.bat to rebuild with the data file included.")
+        else:
+            msg = f"python-escpos failed to load ({_escpos_error}). Reinstall and restart."
+        return jsonify({"error": msg}), 500
+
+    try:
+        if printer_type == "network":
+            if not printer_host:
+                return jsonify({"error": "No printer IP configured. Go to Admin → Receipt Printer."}), 400
+            p = escpos_printer.Network(printer_host, port=printer_port)
+        elif printer_type == "usb":
+            if not printer_vendor or not printer_product:
+                return jsonify({"error": "USB vendor/product IDs not configured. Go to Admin → Receipt Printer."}), 400
+            p = escpos_printer.Usb(int(printer_vendor, 16), int(printer_product, 16))
+        else:
+            # 'file' mode — prints to OS default printer via lp/print
+            p = escpos_printer.File("/dev/usb/lp0")
+
+        # --- Format receipt ---
+        p.set(align="center", bold=True, double_height=True, double_width=True)
+        p.text("THE BAR\n")
+        p.set(align="center", bold=False, double_height=False, double_width=False)
+        p.text("-" * 32 + "\n")
+        p.set(align="left")
+        p.text(f"Order #{order['id']}\n")
+        p.text(f"{order['created_at']}\n")
+        p.text(f"Server: {order['created_by'] or 'unknown'}\n")
+        p.text("-" * 32 + "\n")
+
+        for it in items:
+            name  = it["product_name"]
+            qty   = it["quantity"]
+            total = it["line_total"]
+            line  = f"{qty}x {name}"
+            price = f"${total:.2f}"
+            pad   = 32 - len(line) - len(price)
+            p.text(line + (" " * max(1, pad)) + price + "\n")
+            mods = json.loads(it["modifiers_json"] or "[]")
+            for m in mods:
+                p.text(f"   + {m['name']}\n")
+
+        p.text("-" * 32 + "\n")
+        subtotal = order["total"] - (order["tip"] or 0) + (order["discount"] or 0)
+        if order.get("discount"):
+            p.text(f"{'Subtotal':20}${subtotal:.2f}\n")
+            p.text(f"{'Discount':20}-${order['discount']:.2f}\n")
+        if order.get("tip"):
+            p.text(f"{'Tip':20}${order['tip']:.2f}\n")
+        p.set(bold=True)
+        p.text(f"{'TOTAL':20}${order['total']:.2f}\n")
+        p.set(bold=False)
+        p.text(f"Payment: {order['payment_method']}\n")
+        if order.get("note"):
+            p.text(f"Note: {order['note']}\n")
+        p.text("\n")
+        p.set(align="center")
+        p.text("Thank you!\n\n\n")
+        p.cut()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/admin/receipt-printer", methods=["GET", "POST"])
+@admin_required
+def admin_receipt_printer():
+    conn = db.get_db()
+    if request.method == "POST":
+        db.set_setting(conn, "receipt_printer_type",    request.form.get("printer_type", "file"))
+        db.set_setting(conn, "receipt_printer_host",    request.form.get("printer_host", "").strip())
+        db.set_setting(conn, "receipt_printer_port",    request.form.get("printer_port", "9100").strip())
+        db.set_setting(conn, "receipt_printer_vendor",  request.form.get("printer_vendor", "").strip())
+        db.set_setting(conn, "receipt_printer_product", request.form.get("printer_product", "").strip())
+        flash("Receipt printer settings saved.", "success")
+        conn.close()
+        return redirect(url_for("admin_receipt_printer"))
+    settings = {
+        "type":    db.get_setting(conn, "receipt_printer_type", "file"),
+        "host":    db.get_setting(conn, "receipt_printer_host", ""),
+        "port":    db.get_setting(conn, "receipt_printer_port", "9100"),
+        "vendor":  db.get_setting(conn, "receipt_printer_vendor", ""),
+        "product": db.get_setting(conn, "receipt_printer_product", ""),
+        "escpos_available": ESCPOS_AVAILABLE,
+    }
+    conn.close()
+    return render_template("receipt_printer.html", settings=settings)
 
 if __name__ == "__main__":
     import socket

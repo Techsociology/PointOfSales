@@ -78,6 +78,7 @@ def init_db():
             payment_method TEXT NOT NULL DEFAULT 'cash',
             note           TEXT,
             tip            REAL NOT NULL DEFAULT 0,
+            discount       REAL NOT NULL DEFAULT 0,
             voided         INTEGER NOT NULL DEFAULT 0,
             voided_at      TEXT,
             voided_by      TEXT,
@@ -124,8 +125,26 @@ def init_db():
             value TEXT
         );
 
+        -- Generic admin alert log (cash discrepancies + bartender stock requests etc.)
+        CREATE TABLE IF NOT EXISTS admin_alerts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_type   TEXT    NOT NULL DEFAULT 'cash',  -- 'cash' | 'stock_request' | 'other'
+            title        TEXT    NOT NULL,
+            body         TEXT,
+            raised_by    TEXT,
+            shift_id     INTEGER,
+            created_at   TEXT    NOT NULL,
+            resolved     INTEGER NOT NULL DEFAULT 0,
+            resolved_by  TEXT,
+            resolved_at  TEXT,
+            FOREIGN KEY (shift_id) REFERENCES shifts(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_cash_disc_resolved
             ON cash_discrepancies(resolved);
+
+        CREATE INDEX IF NOT EXISTS idx_admin_alerts_resolved
+            ON admin_alerts(resolved);
 
         CREATE INDEX IF NOT EXISTS idx_order_splits_order
             ON order_splits(order_id);
@@ -156,39 +175,21 @@ def init_db():
     conn.commit()
 
     # ---- Migrations for databases created before these columns existed ----
-    order_cols = {row["name"] for row in conn.execute("PRAGMA table_info(orders)")}
+    _order_cols = {row["name"] for row in conn.execute("PRAGMA table_info(orders)")}
     for col, ddl in [
         ("tip",         "ALTER TABLE orders ADD COLUMN tip REAL NOT NULL DEFAULT 0"),
         ("voided",      "ALTER TABLE orders ADD COLUMN voided INTEGER NOT NULL DEFAULT 0"),
         ("voided_at",   "ALTER TABLE orders ADD COLUMN voided_at TEXT"),
         ("voided_by",   "ALTER TABLE orders ADD COLUMN voided_by TEXT"),
         ("void_reason", "ALTER TABLE orders ADD COLUMN void_reason TEXT"),
+        ("discount",    "ALTER TABLE orders ADD COLUMN discount REAL NOT NULL DEFAULT 0"),
     ]:
-        if col not in order_cols:
+        if col not in _order_cols:
             c.execute(ddl)
 
     ticket_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tickets)")}
     if "note" not in ticket_cols:
         c.execute("ALTER TABLE tickets ADD COLUMN note TEXT")
-
-    # order_splits table may not exist in older databases
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS order_splits (
-            id       INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER NOT NULL,
-            method   TEXT    NOT NULL,
-            amount   REAL    NOT NULL,
-            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
-        )
-    """)
-    c.execute("""
-        CREATE INDEX IF NOT EXISTS idx_cash_disc_resolved
-            ON cash_discrepancies(resolved)
-    """)
-    c.execute("""
-        CREATE INDEX IF NOT EXISTS idx_order_splits_order
-            ON order_splits(order_id)
-    """)
 
     conn.commit()
 

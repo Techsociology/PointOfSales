@@ -78,11 +78,30 @@
         <div class="tip-amount-row">Tip: <strong id="tipDisplay">$0.00</strong></div>
       </div>
 
-      <!-- Extra tab actions (note / rename / split) -->
+      <!-- Extra tab actions (note / rename / split / comp) -->
       <div class="ticket-tab-actions">
         <button type="button" class="btn btn-ghost btn-sm" id="noteBtn">📝 Note</button>
         <button type="button" class="btn btn-ghost btn-sm" id="renameTabBtn" style="display:none;" title="Rename this tab">✏️ Rename</button>
         <button type="button" class="btn btn-ghost btn-sm" id="splitBtn">⚡ Split</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="compBtn" title="Apply a discount or comp to this ticket">🏷 Comp</button>
+      </div>
+
+      <!-- Comp / discount panel (hidden by default) -->
+      <div id="compPanel" style="display:none; background:var(--bg-panel-2); border:1px solid var(--wood-line); border-radius:8px; padding:12px; margin-top:8px;">
+        <div style="font-size:12px; color:var(--text-dim); margin-bottom:8px;">Discount / Comp</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+          <button type="button" class="btn btn-ghost btn-sm comp-preset" data-type="pct" data-val="10">10% off</button>
+          <button type="button" class="btn btn-ghost btn-sm comp-preset" data-type="pct" data-val="25">25% off</button>
+          <button type="button" class="btn btn-ghost btn-sm comp-preset" data-type="pct" data-val="50">50% off</button>
+          <button type="button" class="btn btn-ghost btn-sm comp-preset" data-type="pct" data-val="100">Comp (free)</button>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span style="font-size:12px; color:var(--text-dim);">$</span>
+          <input type="number" id="compCustom" min="0" step="0.01" placeholder="Custom amount off" style="padding:5px 8px; font-size:13px; flex:1;">
+          <button type="button" class="btn btn-ghost btn-sm" id="compApplyBtn">Apply</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="compClearBtn">Clear</button>
+        </div>
+        <div id="compDisplay" style="font-size:12px; color:#6db86d; margin-top:6px; display:none;"></div>
       </div>
 
       <div class="ticket-actions">

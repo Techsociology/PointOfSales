@@ -6,6 +6,7 @@
   let currentCategory = "all";
   let paymentMethod   = "cash";
   let tipAmount       = 0;
+  let discountAmount  = 0;   // flat dollar discount / comp
   let splits          = [];   // [{method, amount}] — only used when split mode is on
   let splitMode       = false;
   let modalProduct    = null;
@@ -81,7 +82,7 @@
     try {
       const res  = await fetch("/api/ticket/create", {
         method:  "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFToken(), "X-CSRFToken": getCSRFToken() },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFToken() },
         body:    JSON.stringify({ label }),
       });
       return await res.json();
@@ -154,6 +155,22 @@
     const renameBtn = document.getElementById("renameTabBtn");
     if (renameBtn) renameBtn.style.display = t.id ? "" : "none";
     updateNoteBtn();
+    // Sync discount / comp state when switching tabs
+    discountAmount = t.discountAmount || 0;
+    const _compPanel   = document.getElementById("compPanel");
+    const _compDisplay = document.getElementById("compDisplay");
+    const _compCustom  = document.getElementById("compCustom");
+    if (_compPanel) _compPanel.style.display = "none";
+    if (_compDisplay) {
+      if (discountAmount > 0) {
+        _compDisplay.textContent  = "Discount: -$" + discountAmount.toFixed(2);
+        _compDisplay.style.display = "block";
+      } else {
+        _compDisplay.style.display = "none";
+      }
+    }
+    if (_compCustom) _compCustom.value = discountAmount > 0 ? discountAmount.toFixed(2) : "";
+    document.querySelectorAll(".comp-preset").forEach(b => b.classList.remove("active"));
   }
 
   function updateNoteBtn() {
@@ -603,7 +620,8 @@
     tipAmount = Math.max(0, parseFloat(amount) || 0);
     activeTicket().tipAmount = tipAmount;
     if (tipDisplayEl) tipDisplayEl.textContent = money(tipAmount);
-    ticketTotalEl.textContent = money(getSubtotal() + tipAmount);
+    const disc = activeTicket().discountAmount || 0;
+    ticketTotalEl.textContent = money(Math.max(0, getSubtotal() - disc + tipAmount));
     if (splitMode) { splitMode = false; splits = []; renderSplitIndicator(); }
   }
 
@@ -801,7 +819,9 @@
 
     // --- Card Reader path ---
     if (usingReader) {
-      const total = t.items.reduce((s, i) => s + i.price * i.qty, 0) + tipAmount;
+      const subtotal = t.items.reduce((s, i) => s + i.line_total, 0);
+      const disc  = t.discountAmount || 0;
+      const total = Math.max(0, subtotal - disc + tipAmount);
       btn.disabled = true; btn.textContent = "Processing…";
       try {
         await runCardReaderCharge(total);
@@ -819,9 +839,10 @@
     try {
       const payload = {
         payment_method: splitMode ? (splits[0]?.method || "cash") : paymentMethod,
-        tip:    tipAmount,
-        note:   t.note || "",
-        splits: splitMode ? splits : [],
+        tip:      tipAmount,
+        discount: discountAmount || 0,
+        note:     t.note || "",
+        splits:   splitMode ? splits : [],
       };
 
       let orderId;
@@ -854,9 +875,14 @@
         }
         orderId = data.order_id;
         t.items = []; tipAmount = 0; t.tipAmount = 0; t.note = "";
+        discountAmount = 0; t.discountAmount = 0;
         splitMode = false; splits = [];
         if (tipCustomEl) tipCustomEl.value = "";
+        if (compCustomEl) compCustomEl.value = "";
+        if (compDisplay) compDisplay.style.display = "none";
+        if (compPanel) compPanel.style.display = "none";
         document.querySelectorAll(".tip-preset").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".comp-preset").forEach((b) => b.classList.remove("active"));
         renderTicket();
       }
 
@@ -867,6 +893,62 @@
       btn.textContent = "Charge & Print Ticket";
     }
   });
+
+  // ---- Comp / Discount ----
+  const compPanel    = document.getElementById("compPanel");
+  const compCustomEl = document.getElementById("compCustom");
+  const compDisplay  = document.getElementById("compDisplay");
+
+  function applyDiscount(amount) {
+    const subtotal = getSubtotal();
+    discountAmount = Math.min(Math.max(0, parseFloat(amount) || 0), subtotal);
+    activeTicket().discountAmount = discountAmount;
+    if (discountAmount > 0) {
+      compDisplay.textContent = "Discount: -$" + discountAmount.toFixed(2);
+      compDisplay.style.display = "block";
+    } else {
+      compDisplay.style.display = "none";
+    }
+    // Recompute total display
+    const total = Math.max(0, subtotal - discountAmount + tipAmount);
+    ticketTotalEl.textContent = money(total);
+    if (splitMode) { splitMode = false; splits = []; renderSplitIndicator(); }
+  }
+
+  function clearDiscount() {
+    discountAmount = 0;
+    if (activeTicket()) activeTicket().discountAmount = 0;
+    if (compCustomEl) compCustomEl.value = "";
+    if (compDisplay) compDisplay.style.display = "none";
+    document.querySelectorAll(".comp-preset").forEach(b => b.classList.remove("active"));
+    const subtotal = getSubtotal();
+    ticketTotalEl.textContent = money(Math.max(0, subtotal + tipAmount));
+    if (splitMode) { splitMode = false; splits = []; renderSplitIndicator(); }
+  }
+
+  document.getElementById("compBtn").addEventListener("click", () => {
+    const visible = compPanel.style.display !== "none";
+    compPanel.style.display = visible ? "none" : "block";
+  });
+
+  document.querySelectorAll(".comp-preset").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".comp-preset").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const pct      = parseFloat(btn.dataset.val) / 100;
+      const subtotal = getSubtotal();
+      const amount   = Math.round(subtotal * pct * 100) / 100;
+      if (compCustomEl) compCustomEl.value = amount > 0 ? amount.toFixed(2) : "";
+      applyDiscount(amount);
+    });
+  });
+
+  document.getElementById("compApplyBtn").addEventListener("click", () => {
+    document.querySelectorAll(".comp-preset").forEach(b => b.classList.remove("active"));
+    applyDiscount(compCustomEl ? compCustomEl.value : 0);
+  });
+
+  document.getElementById("compClearBtn").addEventListener("click", clearDiscount);
 
   // ---- Bootstrap ----
   initTickets();

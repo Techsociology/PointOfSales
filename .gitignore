@@ -23,7 +23,6 @@ env/
 .env/
 
 # PyInstaller build output
-*.spec
 dist/
 build/
 

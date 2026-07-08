@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Receipt Printer — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel narrow">
+  <div class="panel-head">
+    <h2>Receipt Printer</h2>
+  </div>
+
+  {% if not settings.escpos_available %}
+  <div class="flash flash-error" style="margin-bottom:16px;">
+    <strong>python-escpos not installed.</strong>
+    Run <code>pip install python-escpos</code> then restart the app to enable thermal printing.
+    The "Print (Browser)" button on order pages works without this library.
+  </div>
+  {% endif %}
+
+  <p style="color:var(--text-dim);font-size:13px;margin-top:0;">
+    Configure your ESC/POS thermal receipt printer. Most bar printers connect over the network (WiFi/Ethernet)
+    or via USB. Leave everything blank to use only the browser print fallback.
+  </p>
+
+  <form method="post" style="display:flex;flex-direction:column;gap:16px;max-width:420px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
+      Connection type
+      <select name="printer_type" id="printerType" onchange="toggleFields()" style="padding:8px 10px;font-size:13px;">
+        <option value="file" {% if settings.type == 'file' %}selected{% endif %}>USB (auto-detect /dev/usb/lp0)</option>
+        <option value="network" {% if settings.type == 'network' %}selected{% endif %}>Network (IP / WiFi)</option>
+        <option value="usb" {% if settings.type == 'usb' %}selected{% endif %}>USB (manual vendor/product ID)</option>
+      </select>
+    </label>
+
+    <div id="networkFields" style="display:none;flex-direction:column;gap:12px;">
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
+        Printer IP address
+        <input type="text" name="printer_host" value="{{ settings.host }}" placeholder="e.g. 192.168.1.100" style="padding:8px 10px;font-size:13px;">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
+        Port (default 9100)
+        <input type="number" name="printer_port" value="{{ settings.port or '9100' }}" style="padding:8px 10px;font-size:13px;width:120px;">
+      </label>
+    </div>
+
+    <div id="usbFields" style="display:none;flex-direction:column;gap:12px;">
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
+        USB Vendor ID (hex, e.g. 04b8 for Epson)
+        <input type="text" name="printer_vendor" value="{{ settings.vendor }}" placeholder="04b8" style="padding:8px 10px;font-size:13px;font-family:monospace;">
+      </label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
+        USB Product ID (hex)
+        <input type="text" name="printer_product" value="{{ settings.product }}" placeholder="0202" style="padding:8px 10px;font-size:13px;font-family:monospace;">
+      </label>
+      <p style="font-size:12px;color:var(--text-dim);margin:0;">
+        Find your IDs on Windows: Device Manager → Universal Serial Bus devices. On Linux: <code>lsusb</code>.
+      </p>
+    </div>
+
+    <button type="submit" class="btn btn-amber" style="align-self:flex-start;">Save Settings</button>
+  </form>
+
+  <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--wood-line);">
+    <h3 style="font-size:14px;margin:0 0 8px;">How to set up a receipt printer</h3>
+    <ol style="font-size:13px;color:var(--text-dim);line-height:1.7;padding-left:18px;margin:0;">
+      <li>Run <code>pip install python-escpos</code> and restart the app.</li>
+      <li>For <strong>network printers</strong>: connect the printer to your WiFi, find its IP in its menu, enter it above.</li>
+      <li>For <strong>USB on Windows</strong>: plug in the printer, open Device Manager, find the USB device, note the Vendor ID and Product ID from the hardware details tab.</li>
+      <li>For <strong>USB on Linux/Mac</strong>: run <code>lsusb</code> in terminal. You'll see lines like <code>ID 04b8:0202 Seiko Epson Corp.</code></li>
+      <li>Save settings, then go to any order page and click <strong>🖨 Print Receipt</strong> to test.</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+function toggleFields() {
+  var t = document.getElementById("printerType").value;
+  document.getElementById("networkFields").style.display = t === "network" ? "flex" : "none";
+  document.getElementById("usbFields").style.display    = t === "usb"     ? "flex" : "none";
+}
+toggleFields();
+</script>
+{% endblock %}

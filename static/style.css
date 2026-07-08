@@ -468,9 +468,33 @@ input:focus, select:focus { outline: none; border-color: var(--amber); }
 }
 
 @media print {
-  .topbar, .print-hint, .back-link { display: none !important; }
-  body { background: white; }
-  .ticket-paper.standalone { box-shadow: none; margin: 0; }
+  /* Hide everything except the receipt ticket */
+  .topbar, .print-hint, .back-link,
+  #voidPanel, #voidToggleBtn, .flash-stack,
+  .btn-danger, .panel > *:not(.ticket-paper) { display: none !important; }
+
+  /* Receipt paper sizing: 80mm wide thermal roll */
+  @page { size: 80mm auto; margin: 3mm 2mm; }
+
+  body { background: white !important; color: black !important; }
+
+  .ticket-paper.standalone {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: 11pt;
+  }
+
+  .ticket-title { font-size: 14pt; }
+  .ticket-total-row { font-size: 13pt; }
+  .ti-row, .ti-mod, .ticket-shift, .login-sub { color: black !important; }
+  .ticket-divider { border-top: 1px dashed black !important; }
 }
 
 /* ---- Multi-ticket tab bar ---- */

@@ -7,12 +7,33 @@
   </div>
 
   <table class="data-table">
-    <thead><tr><th>Username</th><th>Role</th><th>Reset Password</th><th></th></tr></thead>
+    <thead><tr><th>Username</th><th>Role</th><th>Change Role</th><th>Reset Password</th><th></th></tr></thead>
     <tbody>
     {% for u in users %}
     <tr>
       <td>{{ u.username }}</td>
-      <td>{{ u.role }}</td>
+      <td>
+        {% if u.role == 'admin' %}
+          <span class="badge" style="background:var(--amber,#c8952a); color:#fff;">admin</span>
+        {% else %}
+          <span class="badge">staff</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if u.id != session.get('user_id') %}
+        <form method="post" action="{{ url_for('change_user_role', user_id=u.id) }}"
+              onsubmit="return confirm('Change {{ u.username }} to {{ 'staff' if u.role == 'admin' else 'admin' }}?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit"
+                  class="btn {% if u.role == 'admin' %}btn-danger{% else %}btn-amber{% endif %}"
+                  style="padding:4px 12px; font-size:12px;">
+            {% if u.role == 'admin' %}↓ Make Staff{% else %}↑ Make Admin{% endif %}
+          </button>
+        </form>
+        {% else %}
+        <span style="font-size:11px; color:var(--text-dim);">(you)</span>
+        {% endif %}
+      </td>
       <td>
         <form method="post" action="{{ url_for('admin_reset_password', user_id=u.id) }}"
               class="inline-form" style="gap:6px;"

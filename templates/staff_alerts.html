@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Stock Requests — Home Bar POS{% endblock %}
+{% block content %}
+<div class="panel">
+
+  <!-- ── Send a New Request ── -->
+  <div class="panel-head">
+    <h2>📦 Request Stock / Alert Admin</h2>
+  </div>
+  <p style="color:var(--text-dim); font-size:13px; margin-top:0;">
+    Send a message to the admin — they'll see it in the Alerts panel and can act on it.
+  </p>
+
+  <div style="background:var(--bg-panel-2); border:1px solid var(--wood-line); border-radius:10px; padding:20px; max-width:520px; margin-bottom:32px;">
+    <div style="margin-bottom:12px;">
+      <label style="display:block; font-size:12px; color:var(--text-dim); margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px;">What's needed?</label>
+      <input type="text" id="srItem" placeholder="e.g. Vodka, limes, ice bags…"
+             style="width:100%; padding:9px 12px; font-size:14px; box-sizing:border-box; background:var(--bg); border:1px solid var(--wood-line); color:var(--text); border-radius:7px;">
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:12px; color:var(--text-dim); margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px;">Extra note <span style="font-weight:400;">(optional)</span></label>
+      <textarea id="srNote" rows="2" placeholder="How urgent? Where to find it? Other context…"
+                style="width:100%; padding:9px 12px; font-size:14px; box-sizing:border-box; background:var(--bg); border:1px solid var(--wood-line); color:var(--text); border-radius:7px; resize:vertical; font-family:inherit;"></textarea>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button type="button" class="btn btn-amber" id="srSendBtn">Send Alert</button>
+      <span id="srStatus" style="font-size:13px; display:none;"></span>
+    </div>
+  </div>
+
+  <!-- ── My Past Requests ── -->
+  <div class="panel-head" style="margin-top:0;">
+    <h2>My Past Requests</h2>
+  </div>
+  {% if my_alerts %}
+  <table class="data-table">
+    <thead>
+      <tr><th>When</th><th>Item</th><th>Note</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+    {% for a in my_alerts %}
+    <tr class="{{ '' if a.resolved else 'alert-row' }}">
+      <td style="white-space:nowrap; font-size:12px; color:var(--text-dim);">{{ a.created_at }}</td>
+      <td><strong>{{ a.title }}</strong></td>
+      <td style="font-size:12px; color:var(--text-dim);">{{ a.body or '—' }}</td>
+      <td>
+        {% if a.resolved %}
+          <span class="badge">✓ Resolved</span>
+        {% else %}
+          <span class="badge badge-open">Pending</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-msg">No requests yet — send one above!</p>
+  {% endif %}
+
+</div>
+
+<script>
+(function () {
+  function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : "";
+  }
+
+  const sendBtn  = document.getElementById("srSendBtn");
+  const itemEl   = document.getElementById("srItem");
+  const noteEl   = document.getElementById("srNote");
+  const statusEl = document.getElementById("srStatus");
+
+  sendBtn.addEventListener("click", async () => {
+    const item = (itemEl.value || "").trim();
+    if (!item) { itemEl.focus(); return; }
+
+    sendBtn.disabled    = true;
+    sendBtn.textContent = "Sending…";
+    statusEl.style.display = "none";
+
+    try {
+      const res  = await fetch("/api/alert/stock-request", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFToken() },
+        body:    JSON.stringify({ item, note: noteEl.value }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        statusEl.textContent    = "✓ Alert sent to admin!";
+        statusEl.style.color    = "var(--success, #6db86d)";
+        statusEl.style.display  = "inline";
+        itemEl.value = "";
+        noteEl.value = "";
+        // Reload page after a moment to show the new row in history
+        setTimeout(() => window.location.reload(), 1200);
+      } else {
+        statusEl.textContent   = "⚠ " + (data.error || "Failed to send.");
+        statusEl.style.color   = "var(--danger, #e3604a)";
+        statusEl.style.display = "inline";
+      }
+    } catch (e) {
+      statusEl.textContent   = "⚠ Network error.";
+      statusEl.style.color   = "var(--danger, #e3604a)";
+      statusEl.style.display = "inline";
+    }
+    sendBtn.disabled    = false;
+    sendBtn.textContent = "Send Alert";
+  });
+
+  // Allow Enter key in item field to send
+  itemEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendBtn.click();
+  });
+})();
+</script>
+{% endblock %}

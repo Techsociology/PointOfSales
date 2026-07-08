@@ -32,11 +32,18 @@
       {% endfor %}
     </div>
     <div class="ticket-divider"></div>
-    {% set subtotal = order.total - order.tip %}
-    {% if order.tip %}
+    {% set item_subtotal = order.total - (order.tip or 0) + (order.discount or 0) %}
+    {% if order.discount or order.tip %}
     <div class="ti-row" style="font-size:13px; margin-bottom:4px; color: var(--text-dim);">
-      <span>Subtotal</span><span>${{ '%.2f' % subtotal }}</span>
+      <span>Subtotal</span><span>${{ '%.2f' % item_subtotal }}</span>
     </div>
+    {% endif %}
+    {% if order.discount %}
+    <div class="ti-row" style="font-size:13px; margin-bottom:4px; color: var(--text-dim);">
+      <span>Discount</span><span style="color:#6db86d;">-${{ '%.2f' % order.discount }}</span>
+    </div>
+    {% endif %}
+    {% if order.tip %}
     <div class="ti-row" style="font-size:13px; margin-bottom:8px; color: var(--text-dim);">
       <span>Tip</span><span>${{ '%.2f' % order.tip }}</span>
     </div>
@@ -50,12 +57,40 @@
   </div>
 
   <div class="print-hint">
-    <button class="btn btn-ghost" onclick="window.print()">Print this ticket</button>
+    <button class="btn btn-amber" id="thermalPrintBtn">🖨 Print Receipt</button>
+    <button class="btn btn-ghost" onclick="window.print()" style="margin-left:8px;" title="Print via browser / OS dialog">Print (Browser)</button>
     {% if session.get('role') == 'admin' and not order.voided %}
     <button type="button" class="btn btn-danger" id="voidToggleBtn" style="margin-left:10px;">Void This Order</button>
     {% endif %}
+    <div id="printStatus" style="font-size:12px;color:var(--text-dim);margin-top:6px;display:none;"></div>
   </div>
-
+  <script>
+  document.getElementById("thermalPrintBtn").addEventListener("click", async function() {
+    const btn    = this;
+    const status = document.getElementById("printStatus");
+    btn.disabled = true; btn.textContent = "Printing…";
+    status.style.display = "none";
+    try {
+      const res  = await fetch("/api/print-receipt/{{ order.id }}", {
+        method:  "POST",
+        headers: { "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').content },
+      });
+      const data = await res.json();
+      if (data.success) {
+        btn.textContent = "✓ Sent to printer";
+        status.textContent = "Receipt sent to thermal printer.";
+      } else {
+        btn.textContent = "🖨 Print Receipt";
+        status.textContent = "⚠ " + (data.error || "Print failed. Check Admin → Receipt Printer.");
+      }
+    } catch (e) {
+      btn.textContent = "🖨 Print Receipt";
+      status.textContent = "⚠ Network error.";
+    }
+    btn.disabled = false;
+    status.style.display = "block";
+  });
+  </script>
   {% if session.get('role') == 'admin' and not order.voided %}
   <div id="voidPanel" style="display:none; margin-top:16px; background:var(--bg-panel-2); border:1px solid #6e3323; border-radius:10px; padding:16px;">
     <p style="color:#e3a08d; margin:0 0 10px; font-size:14px;"><strong>Void Order #{{ order.id }}?</strong> This removes it from all sales and cash totals immediately. This cannot be undone.</p>

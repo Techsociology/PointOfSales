@@ -7,6 +7,11 @@
   </div>
 
   <form method="get" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px;">
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;flex:1;min-width:180px;">
+      Search (drink or note)
+      <input type="text" name="q" value="{{ search_query }}" placeholder="e.g. Mojito, Tab: Mike…" style="padding:6px 10px;font-size:13px;">
+    </label>
+    {% if not search_query %}
     <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;">
       Date
       <input type="date" name="date" value="{{ date_filter }}" style="padding:6px 10px;font-size:13px;">
@@ -29,11 +34,17 @@
         {% endfor %}
       </select>
     </label>
-    <button type="submit" class="btn btn-amber" style="align-self:flex-end;">Filter</button>
-    {% if date_filter or server_filter or payment_filter %}
+    {% endif %}
+    <button type="submit" class="btn btn-amber" style="align-self:flex-end;">Search</button>
+    {% if date_filter or server_filter or payment_filter or search_query %}
     <a href="{{ url_for('history') }}" class="btn btn-ghost" style="align-self:flex-end;">Clear</a>
     {% endif %}
   </form>
+  {% if search_query %}
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">
+    Showing orders containing <strong>{{ search_query }}</strong> in drink names or notes.
+  </p>
+  {% endif %}
 
   {% if orders %}
   <table class="data-table">

@@ -35,7 +35,10 @@ except Exception as _e:
     _escpos_error = f"error:{_e}"
 
 if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
+    BASE_DIR = os.path.join(
+        os.environ.get("LOCALAPPDATA", os.path.dirname(sys.executable)),
+        "HomeBarPOS"
+    )
     TEMPLATE_FOLDER = os.path.join(sys._MEIPASS, "templates")
     STATIC_FOLDER   = os.path.join(sys._MEIPASS, "static")
 else:

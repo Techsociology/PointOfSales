@@ -5,7 +5,10 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash
 
 if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
+    BASE_DIR = os.path.join(
+        os.environ.get("LOCALAPPDATA", os.path.dirname(sys.executable)),
+        "HomeBarPOS"
+    )
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 

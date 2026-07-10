@@ -79,5 +79,5 @@ Section "Uninstall"
     ; Remove registry keys
     DeleteRegKey HKLM "${REG_KEY}"
 
-    MessageBox MB_OK "Home Bar POS uninstalled.$\n$\nYour database (instance\bar_pos.db) was kept at:$\n$INSTDIR\instance\"
+    MessageBox MB_OK "Home Bar POS uninstalled.$\n$\nYour database (instance\bar_pos.db) was kept at:$\n$LOCALAPPDATA\HomeBarPOS\instance\"
 SectionEnd

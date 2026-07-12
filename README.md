@@ -66,26 +66,6 @@ tablet, or laptop on the same WiFi. No cloud subscription, no monthly fees.
 
 ---
 
-## Quick start
-
-**Requires Python 3.9+** — download from [python.org](https://www.python.org/downloads/).
-On Windows, check **"Add Python to PATH"** on the first install screen.
-
-```bash
-# Clone the repo
-git clone https://github.com/techsociology/Bar_PointOfSales
-cd Bar_PointOfSales
-
-# Install dependencies (once)
-pip install -r requirements.txt
-
-# Run
-py app.py          # Windows
-python app.py      # Mac / Linux
-```
-
-Open `http://localhost:5000` in any browser.
-
 > **Windows tip:** double-clicking `app.py` won't work — Windows runs `.py` files
 > with a silent background interpreter that closes immediately. Always run from a
 > terminal: open CMD or PowerShell in the project folder and type `py app.py`.

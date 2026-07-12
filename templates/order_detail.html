@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Order #{{ order.id }} — Home Bar POS{% endblock %}
+{% block title %}Order #{{ order.id }} — Bar POS{% endblock %}
 {% block content %}
 <div class="panel narrow">
   <a href="{{ url_for('history') }}" class="back-link">&larr; Back to history</a>
@@ -9,6 +9,16 @@
     ⚠ This order was VOIDED on {{ order.voided_at }} by {{ order.voided_by }}.
     {% if order.void_reason %}Reason: {{ order.void_reason }}{% endif %}
     It does not count toward sales or cash totals.
+  </div>
+  {% endif %}
+
+  {% if refunds %}
+  <div class="flash flash-success" style="margin-bottom:12px;">
+    ↩ Refunds issued on this order:
+    {% for r in refunds %}
+      <strong>${{ '%.2f' % r.amount }}</strong> ({{ r.method }}) on {{ r.refunded_at[:10] }} by {{ r.refunded_by }}{% if r.reason %} — {{ r.reason }}{% endif %}{% if not loop.last %}, {% endif %}
+    {% endfor %}
+    — Total refunded: <strong>${{ '%.2f' % total_refunded }}</strong>
   </div>
   {% endif %}
 
@@ -32,15 +42,18 @@
       {% endfor %}
     </div>
     <div class="ticket-divider"></div>
-    {% set item_subtotal = order.total - (order.tip or 0) + (order.discount or 0) %}
-    {% if order.discount or order.tip %}
+    {% set item_subtotal = order.total - (order.tip or 0) - (order.tax or 0) + (order.discount or 0) %}
     <div class="ti-row" style="font-size:13px; margin-bottom:4px; color: var(--text-dim);">
       <span>Subtotal</span><span>${{ '%.2f' % item_subtotal }}</span>
     </div>
-    {% endif %}
     {% if order.discount %}
     <div class="ti-row" style="font-size:13px; margin-bottom:4px; color: var(--text-dim);">
       <span>Discount</span><span style="color:#6db86d;">-${{ '%.2f' % order.discount }}</span>
+    </div>
+    {% endif %}
+    {% if order.tax %}
+    <div class="ti-row" style="font-size:13px; margin-bottom:4px; color: var(--text-dim);">
+      <span>Tax</span><span>${{ '%.2f' % order.tax }}</span>
     </div>
     {% endif %}
     {% if order.tip %}
@@ -58,12 +71,69 @@
 
   <div class="print-hint">
     <button class="btn btn-amber" id="thermalPrintBtn">🖨 Print Receipt</button>
-    <button class="btn btn-ghost" onclick="window.print()" style="margin-left:8px;" title="Print via browser / OS dialog">Print (Browser)</button>
+    <button class="btn btn-ghost" onclick="window.print()" style="margin-left:8px;">Print (Browser)</button>
     {% if session.get('role') == 'admin' and not order.voided %}
-    <button type="button" class="btn btn-danger" id="voidToggleBtn" style="margin-left:10px;">Void This Order</button>
+    <button type="button" class="btn btn-ghost" id="refundToggleBtn" style="margin-left:8px;">↩ Refund</button>
+    <button type="button" class="btn btn-danger" id="voidToggleBtn" style="margin-left:8px;">Void This Order</button>
     {% endif %}
     <div id="printStatus" style="font-size:12px;color:var(--text-dim);margin-top:6px;display:none;"></div>
   </div>
+
+  {% if session.get('role') == 'admin' and not order.voided %}
+  <!-- Refund panel -->
+  {% set max_refundable = order.total - total_refunded %}
+  <div id="refundPanel" style="display:none; margin-top:16px; background:var(--bg-panel-2); border:1px solid var(--wood-line); border-radius:10px; padding:16px;">
+    <p style="color:var(--amber); margin:0 0 10px; font-size:14px;"><strong>↩ Issue Refund for Order #{{ order.id }}</strong></p>
+    <p style="font-size:13px;color:var(--text-dim);margin:0 0 12px;">
+      Order total: <strong>${{ '%.2f' % order.total }}</strong>
+      {% if total_refunded > 0 %} · Already refunded: <strong>${{ '%.2f' % total_refunded }}</strong>{% endif %}
+      · Max refundable: <strong>${{ '%.2f' % max_refundable }}</strong>
+    </p>
+    <form method="post" action="{{ url_for('refund_order', order_id=order.id) }}" class="inline-form" style="flex-wrap:wrap; gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="number" name="amount" step="0.01" min="0.01" max="{{ '%.2f' % max_refundable }}"
+             placeholder="Amount $" style="width:120px;padding:8px;" required>
+      <select name="method" style="padding:8px;">
+        <option value="original">Original method</option>
+        <option value="cash">Cash</option>
+        <option value="card">Card</option>
+        <option value="store_credit">Store credit</option>
+      </select>
+      <input type="text" name="reason" placeholder="Reason (required)" style="flex:1;min-width:160px;" required>
+      <button type="submit" class="btn btn-amber">Confirm Refund</button>
+      <button type="button" class="btn btn-ghost" id="refundCancelBtn">Cancel</button>
+    </form>
+  </div>
+
+  <!-- Void panel -->
+  <div id="voidPanel" style="display:none; margin-top:16px; background:var(--bg-panel-2); border:1px solid #6e3323; border-radius:10px; padding:16px;">
+    <p style="color:#e3a08d; margin:0 0 10px; font-size:14px;"><strong>Void Order #{{ order.id }}?</strong> This removes it from all sales and cash totals. Cannot be undone.</p>
+    <form method="post" action="{{ url_for('void_order', order_id=order.id) }}" class="inline-form" style="flex-wrap:wrap; gap:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="reason" placeholder="Reason (optional)" style="flex:1; min-width:180px;">
+      <button type="submit" class="btn btn-danger">Confirm Void</button>
+      <button type="button" class="btn btn-ghost" id="voidCancelBtn">Cancel</button>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById("refundToggleBtn").addEventListener("click", function() {
+      document.getElementById("refundPanel").style.display = "block";
+      document.getElementById("voidPanel").style.display = "none";
+    });
+    document.getElementById("refundCancelBtn").addEventListener("click", function() {
+      document.getElementById("refundPanel").style.display = "none";
+    });
+    document.getElementById("voidToggleBtn").addEventListener("click", function() {
+      document.getElementById("voidPanel").style.display = "block";
+      document.getElementById("refundPanel").style.display = "none";
+    });
+    document.getElementById("voidCancelBtn").addEventListener("click", function() {
+      document.getElementById("voidPanel").style.display = "none";
+    });
+  </script>
+  {% endif %}
+
   <script>
   document.getElementById("thermalPrintBtn").addEventListener("click", async function() {
     const btn    = this;
@@ -81,7 +151,7 @@
         status.textContent = "Receipt sent to thermal printer.";
       } else {
         btn.textContent = "🖨 Print Receipt";
-        status.textContent = "⚠ " + (data.error || "Print failed. Check Admin → Receipt Printer.");
+        status.textContent = "⚠ " + (data.error || "Print failed. Check Admin → Settings → Receipt Printer.");
       }
     } catch (e) {
       btn.textContent = "🖨 Print Receipt";
@@ -91,24 +161,5 @@
     status.style.display = "block";
   });
   </script>
-  {% if session.get('role') == 'admin' and not order.voided %}
-  <div id="voidPanel" style="display:none; margin-top:16px; background:var(--bg-panel-2); border:1px solid #6e3323; border-radius:10px; padding:16px;">
-    <p style="color:#e3a08d; margin:0 0 10px; font-size:14px;"><strong>Void Order #{{ order.id }}?</strong> This removes it from all sales and cash totals immediately. This cannot be undone.</p>
-    <form method="post" action="{{ url_for('void_order', order_id=order.id) }}" class="inline-form" style="flex-wrap:wrap; gap:8px;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="reason" placeholder="Reason (optional)" style="flex:1; min-width:180px;">
-      <button type="submit" class="btn btn-danger">Confirm Void</button>
-      <button type="button" class="btn btn-ghost" id="voidCancelBtn">Cancel</button>
-    </form>
-  </div>
-  <script>
-    document.getElementById("voidToggleBtn").addEventListener("click", function() {
-      document.getElementById("voidPanel").style.display = "block";
-    });
-    document.getElementById("voidCancelBtn").addEventListener("click", function() {
-      document.getElementById("voidPanel").style.display = "none";
-    });
-  </script>
-  {% endif %}
 </div>
 {% endblock %}

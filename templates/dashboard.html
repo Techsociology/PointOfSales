@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Bar POS{% endblock %}
+{% block content %}
+<style>
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.dash-card { background: var(--bg-panel); border: 1px solid var(--wood-line); border-radius: 12px; padding: 18px 20px; }
+.dash-card .label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+.dash-card .value { font-size: 28px; font-weight: 800; color: var(--amber); line-height: 1; }
+.dash-card .sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.dash-section { margin-bottom: 28px; }
+.dash-section h3 { font-size: 14px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin: 0 0 12px; }
+.top-drink-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--wood-line); font-size: 14px; }
+.top-drink-row:last-child { border-bottom: none; }
+.top-drink-rank { font-size: 18px; font-weight: 800; color: var(--amber); width: 24px; flex-shrink: 0; }
+.top-drink-name { flex: 1; }
+.top-drink-qty { font-weight: 700; color: var(--amber); }
+.top-drink-rev { font-size: 12px; color: var(--text-dim); }
+.bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 80px; padding-top: 8px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; }
+.bar-fill { width: 100%; background: var(--amber); border-radius: 3px 3px 0 0; min-height: 2px; opacity: 0.85; transition: height 0.3s; }
+.bar-label { font-size: 9px; color: var(--text-dim); margin-top: 3px; }
+.trend-row { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 4px; }
+.trend-day { text-align: center; flex-shrink: 0; }
+.trend-day .td-date { font-size: 11px; color: var(--text-dim); }
+.trend-day .td-sales { font-size: 14px; font-weight: 700; color: var(--amber); }
+.trend-day .td-cnt { font-size: 11px; color: var(--text-dim); }
+.recent-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--wood-line); font-size: 13px; }
+.recent-row:last-child { border-bottom: none; }
+.recent-id { color: var(--text-dim); width: 56px; }
+.recent-by { flex: 1; }
+.recent-pay { font-size: 11px; color: var(--text-dim); }
+.recent-total { font-weight: 700; color: var(--amber); }
+.split-pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+</style>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+  <h2 style="margin:0;">Dashboard</h2>
+  <span style="font-size:12px;color:var(--text-dim);">Today: {{ now().strftime('%A, %b %d').replace(' 0', ' ') if now else '' }}</span>
+</div>
+
+<!-- Today's headline cards -->
+<div class="dash-grid">
+  <div class="dash-card">
+    <div class="label">Today's Sales</div>
+    <div class="value">${{ '%.2f' % today_sales }}</div>
+    <div class="sub">{{ today_count }} orders</div>
+  </div>
+  <div class="dash-card">
+    <div class="label">Orders Today</div>
+    <div class="value">{{ today_count }}</div>
+    <div class="sub">avg ${{ '%.2f' % today_avg }}</div>
+  </div>
+  <div class="dash-card">
+    <div class="label">Avg Ticket</div>
+    <div class="value">${{ '%.2f' % today_avg }}</div>
+    <div class="sub">per order</div>
+  </div>
+  <div class="dash-card">
+    <div class="label">Cash</div>
+    <div class="value">${{ '%.2f' % today_cash }}</div>
+    <div class="sub">today</div>
+  </div>
+  <div class="dash-card">
+    <div class="label">Card</div>
+    <div class="value">${{ '%.2f' % today_card }}</div>
+    <div class="sub">today</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;flex-wrap:wrap;" class="dash-two-col">
+
+  <!-- Top 5 today -->
+  <div class="dash-section">
+    <h3>🏆 Top Sellers Today</h3>
+    {% if top_drinks_today %}
+      {% for d in top_drinks_today %}
+      <div class="top-drink-row">
+        <div class="top-drink-rank">{{ loop.index }}</div>
+        <div class="top-drink-name">{{ d.product_name }}</div>
+        <div>
+          <span class="top-drink-qty">×{{ d.qty }}</span>
+          <span class="top-drink-rev"> — ${{ '%.0f' % d.revenue }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p style="color:var(--text-dim);font-size:13px;">No orders yet today.</p>
+    {% endif %}
+  </div>
+
+  <!-- Top 5 all-time -->
+  <div class="dash-section">
+    <h3>🏅 Top Sellers All-Time</h3>
+    {% if top_drinks_alltime %}
+      {% for d in top_drinks_alltime %}
+      <div class="top-drink-row">
+        <div class="top-drink-rank">{{ loop.index }}</div>
+        <div class="top-drink-name">{{ d.product_name }}</div>
+        <div>
+          <span class="top-drink-qty">×{{ d.qty }}</span>
+          <span class="top-drink-rev"> — ${{ '%.0f' % d.revenue }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p style="color:var(--text-dim);font-size:13px;">No orders yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Hourly sales chart -->
+<div class="dash-section">
+  <h3>⏱ Today's Sales by Hour</h3>
+  <div class="bar-chart" id="hourlyChart"></div>
+</div>
+
+<!-- 7-day trend -->
+<div class="dash-section">
+  <h3>📅 7-Day Trend</h3>
+  <div class="trend-row" id="trendRow"></div>
+</div>
+
+<!-- Recent orders -->
+<div class="dash-section">
+  <h3>🧾 Recent Orders</h3>
+  {% for o in recent_orders %}
+  <a href="{{ url_for('order_detail', order_id=o.id) }}" style="text-decoration:none;color:inherit;">
+    <div class="recent-row">
+      <div class="recent-id">#{{ o.id }}</div>
+      <div class="recent-by">{{ o.created_by or '—' }}</div>
+      <div class="recent-pay">{{ o.payment_method }}</div>
+      <div style="font-size:11px;color:var(--text-dim);">{{ o.created_at[11:16] }}</div>
+      <div class="recent-total">${{ '%.2f' % o.total }}</div>
+    </div>
+  </a>
+  {% else %}
+  <p style="color:var(--text-dim);font-size:13px;">No orders yet.</p>
+  {% endfor %}
+</div>
+
+<script>
+(function() {
+  const hourly = {{ hourly_data | safe }};
+  const trend  = {{ trend | safe }};
+
+  // ---- Hourly bar chart ----
+  const chart  = document.getElementById("hourlyChart");
+  const maxVal = Math.max(...hourly.map(h => h.sales), 1);
+  // Only show hours 8–24 to reduce noise
+  const visible = hourly.filter(h => h.hour >= 8);
+  visible.forEach(h => {
+    const col  = document.createElement("div");
+    col.className = "bar-col";
+    const pct  = (h.sales / maxVal) * 100;
+    const fill = document.createElement("div");
+    fill.className = "bar-fill";
+    fill.style.height = Math.max(pct, h.sales > 0 ? 4 : 0) + "%";
+    fill.title = `${h.hour}:00 — $${h.sales.toFixed(2)}`;
+    const lbl = document.createElement("div");
+    lbl.className = "bar-label";
+    lbl.textContent = h.hour % 3 === 0 ? (h.hour === 12 ? "12p" : h.hour > 12 ? (h.hour-12)+"p" : h.hour+"a") : "";
+    col.appendChild(fill);
+    col.appendChild(lbl);
+    chart.appendChild(col);
+  });
+
+  // ---- 7-day trend ----
+  const trendEl = document.getElementById("trendRow");
+  if (trend.length === 0) {
+    trendEl.innerHTML = '<span style="color:var(--text-dim);font-size:13px;">Not enough data yet.</span>';
+  } else {
+    trend.forEach(d => {
+      const div = document.createElement("div");
+      div.className = "trend-day";
+      const parts = d.day.split("-");
+      const label = parts[1] + "/" + parts[2];
+      div.innerHTML = `<div class="td-date">${label}</div><div class="td-sales">$${d.sales.toFixed(0)}</div><div class="td-cnt">${d.cnt} orders</div>`;
+      trendEl.appendChild(div);
+    });
+  }
+})();
+</script>
+{% endblock %}

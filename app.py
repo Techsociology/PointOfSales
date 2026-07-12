@@ -5,6 +5,7 @@ import secrets
 from functools import wraps
 from datetime import datetime
 
+
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, jsonify, flash
@@ -110,6 +111,7 @@ def compute_shift_cash(conn, shift_id, starting_cash):
     For split orders the split amounts are stored per-method in order_splits.
     For non-split orders the full order total is attributed to payment_method.
     We only count cash portions toward the expected drawer amount.
+    Cash refunds issued as cash (or 'original' on a cash order) reduce the drawer.
     """
     orders = conn.execute(
         "SELECT id, payment_method, total FROM orders WHERE shift_id = ? AND voided = 0",
@@ -131,8 +133,29 @@ def compute_shift_cash(conn, shift_id, starting_cash):
             if o["payment_method"] == "cash":
                 cash_sales += o["total"]
 
-    expected_cash = (starting_cash or 0) + cash_sales
+    # Subtract cash refunds — money that left the drawer
+    order_ids = [o["id"] for o in orders]
+    cash_refunds = 0.0
+    if order_ids:
+        q_marks = ",".join("?" * len(order_ids))
+        refund_rows = conn.execute(
+            f"SELECT r.amount, r.method, o.payment_method "
+            f"FROM refunds r JOIN orders o ON o.id = r.order_id "
+            f"WHERE r.order_id IN ({q_marks})",
+            order_ids,
+        ).fetchall()
+        for r in refund_rows:
+            if r["method"] == "cash":
+                cash_refunds += r["amount"]
+            elif r["method"] == "original" and r["payment_method"] == "cash":
+                cash_refunds += r["amount"]
+
+    expected_cash = (starting_cash or 0) + cash_sales - cash_refunds
     return total_sales, cash_sales, expected_cash
+
+@app.context_processor
+def inject_now():
+    return dict(now=datetime.now)
 
 @app.context_processor
 def inject_globals():
@@ -176,7 +199,8 @@ def login():
             next_url = request.args.get("next") or ""
             # Reject anything with a host component (absolute or protocol-relative URLs)
             if not next_url or urlparse(next_url).netloc:
-                next_url = url_for("pos")
+                # Admins go to dashboard on login; staff go to register
+                next_url = url_for("admin_dashboard") if user["role"] == "admin" else url_for("pos")
             return redirect(next_url)
         flash("Invalid username or password.", "error")
     return render_template("login.html")
@@ -328,8 +352,11 @@ def api_create_order():
         conn.close()
         return jsonify({"error": "Cart is empty."}), 400
 
-    subtotal = sum(it["line_total"] for it in items)
-    total    = max(0.0, subtotal - discount + tip)
+    subtotal  = sum(it["line_total"] for it in items)
+    tax_rate  = float(db.get_setting(conn, "tax_rate", "0") or "0") / 100.0
+    taxable   = max(0.0, subtotal - discount)
+    tax       = round(taxable * tax_rate, 2)
+    total     = max(0.0, taxable + tax + tip)
 
     cur = conn.cursor()
 
@@ -349,9 +376,9 @@ def api_create_order():
         splits = []
 
     cur.execute(
-        "INSERT INTO orders (shift_id, created_at, created_by, total, payment_method, note, tip, discount) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (shift["id"], db.now_iso(), session.get("username"), total, payment_method, note, tip, discount),
+        "INSERT INTO orders (shift_id, created_at, created_by, total, payment_method, note, tip, discount, tax) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (shift["id"], db.now_iso(), session.get("username"), total, payment_method, note, tip, discount, tax),
     )
     order_id = cur.lastrowid
 
@@ -432,6 +459,7 @@ def api_get_ticket(ticket_id):
         "id":    ticket["id"],
         "label": ticket["label"],
         "note":  ticket["note"] or "",
+        "color": ticket["color"] or "",
         "items": parsed_items,
     })
 
@@ -549,8 +577,11 @@ def api_ticket_checkout(ticket_id):
         conn.close()
         return jsonify({"error": "Ticket is empty."}), 400
 
-    subtotal = sum(it["line_total"] for it in items)
-    total    = max(0.0, subtotal - discount + max(0, tip))
+    subtotal  = sum(it["line_total"] for it in items)
+    tax_rate  = float(db.get_setting(conn, "tax_rate", "0") or "0") / 100.0
+    taxable   = max(0.0, subtotal - discount)
+    tax       = round(taxable * tax_rate, 2)
+    total     = max(0.0, taxable + tax + max(0, tip))
 
     # Build note
     base_note = f"Tab: {ticket['label']}"
@@ -570,9 +601,9 @@ def api_ticket_checkout(ticket_id):
 
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO orders (shift_id, created_at, created_by, total, payment_method, note, tip, discount) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (shift["id"], db.now_iso(), session.get("username"), total, payment_method, base_note, tip, discount),
+        "INSERT INTO orders (shift_id, created_at, created_by, total, payment_method, note, tip, discount, tax) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (shift["id"], db.now_iso(), session.get("username"), total, payment_method, base_note, tip, discount, tax),
     )
     order_id = cur.lastrowid
 
@@ -941,6 +972,9 @@ def order_detail(order_id):
     items = conn.execute(
         "SELECT * FROM order_items WHERE order_id = ?", (order_id,)
     ).fetchall()
+    refunds = conn.execute(
+        "SELECT * FROM refunds WHERE order_id = ? ORDER BY id", (order_id,)
+    ).fetchall()
     conn.close()
     if not order:
         flash("Order not found.", "error")
@@ -951,7 +985,9 @@ def order_detail(order_id):
         mods = json.loads(it["modifiers_json"] or "[]")
         parsed_items.append({**dict(it), "modifiers": mods})
 
-    return render_template("order_detail.html", order=order, items=parsed_items)
+    total_refunded = sum(r["amount"] for r in refunds)
+    return render_template("order_detail.html", order=order, items=parsed_items,
+                           refunds=refunds, total_refunded=total_refunded)
 
 @app.route("/history/<int:order_id>/void", methods=["POST"])
 @admin_required
@@ -972,6 +1008,8 @@ def void_order(order_id):
         "UPDATE orders SET voided = 1, voided_at = ?, voided_by = ?, void_reason = ? WHERE id = ?",
         (db.now_iso(), session.get("username"), reason, order_id),
     )
+    db.log_audit(conn, session.get("username"), "void_order",
+                 f"order#{order_id}", reason or "no reason given")
     conn.commit()
     conn.close()
     flash(f"Order #{order_id} voided.", "success")
@@ -1524,9 +1562,20 @@ def print_receipt(order_id):
             p = escpos_printer.File("/dev/usb/lp0")
 
         # --- Format receipt ---
+        conn2 = db.get_db()
+        bar_name    = db.get_setting(conn2, "receipt_bar_name", "THE BAR")
+        bar_address = db.get_setting(conn2, "receipt_address", "")
+        bar_phone   = db.get_setting(conn2, "receipt_phone", "")
+        bar_footer  = db.get_setting(conn2, "receipt_footer", "Thank you!")
+        show_tax    = db.get_setting(conn2, "receipt_show_tax", "1") == "1"
+        conn2.close()
         p.set(align="center", bold=True, double_height=True, double_width=True)
-        p.text("THE BAR\n")
+        p.text(bar_name + "\n")
         p.set(align="center", bold=False, double_height=False, double_width=False)
+        if bar_address:
+            p.text(bar_address + "\n")
+        if bar_phone:
+            p.text(bar_phone + "\n")
         p.text("-" * 32 + "\n")
         p.set(align="left")
         p.text(f"Order #{order['id']}\n")
@@ -1559,9 +1608,11 @@ def print_receipt(order_id):
         p.text(f"Payment: {order['payment_method']}\n")
         if order.get("note"):
             p.text(f"Note: {order['note']}\n")
+        if show_tax and order.get("tax"):
+            p.text(f"{'Tax':20}${order['tax']:.2f}\n")
         p.text("\n")
         p.set(align="center")
-        p.text("Thank you!\n\n\n")
+        p.text((bar_footer or "Thank you!") + "\n\n\n")
         p.cut()
         return jsonify({"success": True})
     except Exception as e:
@@ -1590,6 +1641,253 @@ def admin_receipt_printer():
     }
     conn.close()
     return render_template("receipt_printer.html", settings=settings)
+
+# ================================================================ ANALYTICS DASHBOARD ==
+
+@app.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
+    conn  = db.get_db()
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # ---- Today's headline numbers ----
+    today_orders = conn.execute(
+        "SELECT * FROM orders WHERE created_at LIKE ? AND voided = 0",
+        (today + "%",)
+    ).fetchall()
+
+    today_sales   = sum(o["total"] for o in today_orders)
+    today_count   = len(today_orders)
+    today_avg     = (today_sales / today_count) if today_count else 0
+
+    today_cash = 0.0
+    today_card = 0.0
+    for o in today_orders:
+        splits = conn.execute(
+            "SELECT method, amount FROM order_splits WHERE order_id = ?", (o["id"],)
+        ).fetchall()
+        if splits:
+            today_cash += sum(s["amount"] for s in splits if s["method"] == "cash")
+            today_card += sum(s["amount"] for s in splits if s["method"] in ("card", "card_reader"))
+        elif o["payment_method"] == "cash":
+            today_cash += o["total"]
+        elif o["payment_method"] in ("card", "card_reader"):
+            today_card += o["total"]
+
+    # ---- Top 5 drinks today ----
+    top_drinks_today = conn.execute(
+        """
+        SELECT oi.product_name, SUM(oi.quantity) as qty, SUM(oi.line_total) as revenue
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.created_at LIKE ? AND o.voided = 0
+        GROUP BY oi.product_name
+        ORDER BY qty DESC
+        LIMIT 5
+        """,
+        (today + "%",)
+    ).fetchall()
+
+    # ---- Top 5 drinks all-time ----
+    top_drinks_alltime = conn.execute(
+        """
+        SELECT oi.product_name, SUM(oi.quantity) as qty, SUM(oi.line_total) as revenue
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.voided = 0
+        GROUP BY oi.product_name
+        ORDER BY qty DESC
+        LIMIT 5
+        """
+    ).fetchall()
+
+    # ---- Hourly sales today (for mini chart) ----
+    hourly_rows = conn.execute(
+        """
+        SELECT strftime('%H', created_at) as hour, SUM(total) as sales
+        FROM orders
+        WHERE created_at LIKE ? AND voided = 0
+        GROUP BY hour
+        ORDER BY hour
+        """,
+        (today + "%",)
+    ).fetchall()
+    hourly = {int(r["hour"]): r["sales"] for r in hourly_rows}
+    # Fill all hours 0-23
+    hourly_data = [{"hour": h, "sales": hourly.get(h, 0)} for h in range(24)]
+
+    # ---- 7-day trend ----
+    trend_rows = conn.execute(
+        """
+        SELECT strftime('%Y-%m-%d', created_at) as day, SUM(total) as sales, COUNT(*) as cnt
+        FROM orders
+        WHERE voided = 0
+          AND created_at >= date('now', '-6 days')
+        GROUP BY day
+        ORDER BY day
+        """
+    ).fetchall()
+    trend = [{"day": r["day"], "sales": r["sales"], "cnt": r["cnt"]} for r in trend_rows]
+
+    # ---- Recent activity ----
+    recent_orders = conn.execute(
+        "SELECT * FROM orders WHERE voided = 0 ORDER BY id DESC LIMIT 8"
+    ).fetchall()
+
+    conn.close()
+    return render_template(
+        "dashboard.html",
+        today_sales=today_sales,
+        today_count=today_count,
+        today_avg=today_avg,
+        today_cash=today_cash,
+        today_card=today_card,
+        top_drinks_today=top_drinks_today,
+        top_drinks_alltime=top_drinks_alltime,
+        hourly_data=json.dumps(hourly_data),
+        trend=json.dumps(trend),
+        recent_orders=recent_orders,
+    )
+
+# ================================================================ REFUNDS ==
+
+@app.route("/history/<int:order_id>/refund", methods=["POST"])
+@admin_required
+def refund_order(order_id):
+    conn  = db.get_db()
+    order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        flash("Order not found.", "error")
+        return redirect(url_for("history"))
+    if order["voided"]:
+        conn.close()
+        flash("Cannot refund a voided order.", "error")
+        return redirect(url_for("order_detail", order_id=order_id))
+
+    # Check total already refunded
+    already = conn.execute(
+        "SELECT COALESCE(SUM(amount),0) as total FROM refunds WHERE order_id = ?",
+        (order_id,)
+    ).fetchone()["total"]
+
+    max_refundable = round(order["total"] - already, 2)
+    if max_refundable <= 0:
+        conn.close()
+        flash("This order has already been fully refunded.", "error")
+        return redirect(url_for("order_detail", order_id=order_id))
+
+    try:
+        amount = round(float(request.form.get("amount") or 0), 2)
+    except (TypeError, ValueError):
+        conn.close()
+        flash("Invalid refund amount.", "error")
+        return redirect(url_for("order_detail", order_id=order_id))
+
+    if amount <= 0 or amount > max_refundable:
+        conn.close()
+        flash(f"Refund amount must be between $0.01 and ${max_refundable:.2f}.", "error")
+        return redirect(url_for("order_detail", order_id=order_id))
+
+    reason = request.form.get("reason", "").strip()
+    method = request.form.get("method", "original")
+
+    conn.execute(
+        "INSERT INTO refunds (order_id, amount, reason, method, refunded_by, refunded_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (order_id, amount, reason, method, session.get("username"), db.now_iso()),
+    )
+    db.log_audit(conn, session.get("username"), "refund",
+                 f"order#{order_id}", f"${amount:.2f} via {method} — {reason}")
+    conn.commit()
+    conn.close()
+    flash(f"Refund of ${amount:.2f} recorded for Order #{order_id}.", "success")
+    return redirect(url_for("order_detail", order_id=order_id))
+
+# ================================================================ TAX SETTINGS ==
+
+@app.route("/admin/tax", methods=["GET", "POST"])
+@admin_required
+def admin_tax():
+    conn = db.get_db()
+    if request.method == "POST":
+        try:
+            rate = float(request.form.get("tax_rate") or 0)
+            rate = max(0.0, min(rate, 100.0))
+        except (TypeError, ValueError):
+            flash("Tax rate must be a number between 0 and 100.", "error")
+            conn.close()
+            return redirect(url_for("admin_tax"))
+        db.set_setting(conn, "tax_rate", str(round(rate, 4)))
+        db.log_audit(conn, session.get("username"), "tax_rate_change", detail=f"{rate}%")
+        flash(f"Tax rate set to {rate:.2f}%.", "success")
+        conn.close()
+        return redirect(url_for("admin_tax"))
+
+    tax_rate = float(db.get_setting(conn, "tax_rate", "0") or "0")
+    conn.close()
+    return render_template("tax_settings.html", tax_rate=tax_rate)
+
+# ================================================================ RECEIPT SETTINGS ==
+
+@app.route("/admin/receipt-settings", methods=["GET", "POST"])
+@admin_required
+def admin_receipt_settings():
+    conn = db.get_db()
+    if request.method == "POST":
+        db.set_setting(conn, "receipt_bar_name",    request.form.get("bar_name", "THE BAR").strip()[:40])
+        db.set_setting(conn, "receipt_address",     request.form.get("address", "").strip()[:80])
+        db.set_setting(conn, "receipt_phone",       request.form.get("phone", "").strip()[:30])
+        db.set_setting(conn, "receipt_footer",      request.form.get("footer", "").strip()[:120])
+        db.set_setting(conn, "receipt_show_tax",    "1" if request.form.get("show_tax") else "0")
+        flash("Receipt settings saved.", "success")
+        conn.close()
+        return redirect(url_for("admin_receipt_settings"))
+
+    settings = {
+        "bar_name": db.get_setting(conn, "receipt_bar_name", "THE BAR"),
+        "address":  db.get_setting(conn, "receipt_address", ""),
+        "phone":    db.get_setting(conn, "receipt_phone", ""),
+        "footer":   db.get_setting(conn, "receipt_footer", "Thank you!"),
+        "show_tax": db.get_setting(conn, "receipt_show_tax", "1") == "1",
+    }
+    conn.close()
+    return render_template("receipt_settings.html", settings=settings)
+
+# ================================================================ AUDIT LOG ==
+
+@app.route("/admin/audit-log")
+@admin_required
+def admin_audit_log():
+    conn = db.get_db()
+    rows = conn.execute(
+        "SELECT * FROM audit_log ORDER BY id DESC LIMIT 300"
+    ).fetchall()
+    conn.close()
+    return render_template("audit_log.html", rows=rows)
+
+# ================================================================ TICKET COLOR ==
+
+@app.route("/api/ticket/<int:ticket_id>/color", methods=["POST"])
+@csrf.exempt
+@login_required
+def api_ticket_color(ticket_id):
+    conn   = db.get_db()
+    ticket = conn.execute("SELECT id FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+    if not ticket:
+        conn.close()
+        return jsonify({"error": "Ticket not found."}), 404
+    data  = request.get_json(force=True)
+    color = (data.get("color") or "").strip()
+    # Allowed palette only
+    allowed = {"", "red", "blue", "green", "purple", "orange", "pink"}
+    if color not in allowed:
+        color = ""
+    conn.execute("UPDATE tickets SET color = ? WHERE id = ?", (color or None, ticket_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "color": color})
+
 
 if __name__ == "__main__":
     import socket
@@ -1624,7 +1922,7 @@ if __name__ == "__main__":
     else:
         threading.Thread(target=open_browser, daemon=True).start()
         print("=" * 60)
-        print("  Home Bar POS is running.")
+        print("  Bar POS is running.")
         print(f"  This computer:      http://127.0.0.1:{port}")
         print(f"  Other WiFi devices: http://{local_ip()}:{port}")
         print("  Keep this window open while the register is in use.")

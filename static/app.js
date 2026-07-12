@@ -102,7 +102,9 @@
       if (data.items) {
         ticket.items = data.items;
         ticket.note  = data.note || "";
+        ticket.color = data.color || "";
         if (idx === activeIdx) renderTicket();
+        renderTicketTabs();
       }
     } catch (e) {}
   }
@@ -114,6 +116,8 @@
       const btn = document.createElement("button");
       btn.type      = "button";
       btn.className = "ticket-tab" + (i === activeIdx ? " active" : "");
+      if (t.id) btn.dataset.id = t.id;
+      if (t.color) btn.dataset.color = t.color;
       const noteIcon = t.note ? ' <span class="tab-note-dot" title="Has note">●</span>' : "";
       btn.innerHTML = escapeHtml(t.label) + noteIcon;
       if (i > 0) {
@@ -251,53 +255,89 @@
     } catch (e) { alert("Could not create tab."); }
   });
 
-  // ---- Rename tab modal ----
-  document.getElementById("renameTabBtn").addEventListener("click", () => {
+  // ---- Edit Tab modal (rename + colour) ----
+  let _editTabPendingColor = null;   // tracks colour selected in the modal
+
+  function openEditTabModal() {
     const t = activeTicket();
     if (!t.id) return;
+
     document.getElementById("renameTabInput").value = t.label;
+    _editTabPendingColor = t.color || "";
+
+    // Sync colour swatches to current tab colour
+    document.querySelectorAll("#editTabColorRow .color-swatch").forEach(sw => {
+      sw.classList.toggle("selected", sw.dataset.color === _editTabPendingColor);
+    });
+
+    // Populate saved card names
+    (async () => {
+      const sel = document.getElementById("renameFromCard");
+      try {
+        const res   = await fetch("/api/card-names");
+        const names = await res.json();
+        sel.innerHTML = '<option value="">— pick from card on file —</option>';
+        names.forEach(n => {
+          const opt = document.createElement("option");
+          opt.value = n; opt.textContent = n;
+          sel.appendChild(opt);
+        });
+      } catch(e) {}
+    })();
+
     renameModal.classList.add("show");
     setTimeout(() => document.getElementById("renameTabInput").focus(), 80);
-  });
+  }
+
+  document.getElementById("renameTabBtn").addEventListener("click", openEditTabModal);
   document.getElementById("renameTabCancel").addEventListener("click", () => renameModal.classList.remove("show"));
   renameModal.addEventListener("click", (e) => { if (e.target === renameModal) renameModal.classList.remove("show"); });
 
-  // Populate card names for rename modal too
-  document.getElementById("renameTabBtn").addEventListener("click", async () => {
-    const sel = document.getElementById("renameFromCard");
-    try {
-      const res   = await fetch("/api/card-names");
-      const names = await res.json();
-      sel.innerHTML = '<option value="">— pick from card on file —</option>';
-      names.forEach(n => {
-        const opt = document.createElement("option");
-        opt.value = n; opt.textContent = n;
-        sel.appendChild(opt);
-      });
-    } catch(e) {}
-  });
   document.getElementById("renameFromCard").addEventListener("change", function() {
     if (this.value) document.getElementById("renameTabInput").value = this.value;
+  });
+
+  // Colour swatch click in the modal
+  document.getElementById("editTabColorRow").addEventListener("click", (e) => {
+    const sw = e.target.closest(".color-swatch");
+    if (!sw) return;
+    _editTabPendingColor = sw.dataset.color;
+    document.querySelectorAll("#editTabColorRow .color-swatch").forEach(s => {
+      s.classList.toggle("selected", s === sw);
+    });
   });
 
   document.getElementById("renameTabConfirm").addEventListener("click", async () => {
     const t     = activeTicket();
     if (!t.id) return;
     const label = document.getElementById("renameTabInput").value.trim() || t.label;
+    const color = _editTabPendingColor ?? (t.color || "");
     renameModal.classList.remove("show");
+
     try {
+      // Save label
       const res  = await fetch("/api/ticket/" + t.id + "/rename", {
         method:  "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFToken() },
         body:    JSON.stringify({ label }),
       });
       const data = await res.json();
-      if (data.success) {
-        t.label = data.label;
-        renderTicketTabs();
-        syncTicketPaymentUI();
+      if (data.success) t.label = data.label;
+
+      // Save colour (only if changed)
+      if (color !== (t.color || "")) {
+        const cres  = await fetch("/api/ticket/" + t.id + "/color", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json", "X-CSRFToken": getCSRFToken() },
+          body:    JSON.stringify({ color }),
+        });
+        const cdata = await cres.json();
+        if (cdata.success) t.color = cdata.color;
       }
-    } catch(e) { alert("Could not rename tab."); }
+
+      renderTicketTabs();
+      syncTicketPaymentUI();
+    } catch(e) { alert("Could not save tab."); }
   });
 
   // ---- Order note modal ----
@@ -510,16 +550,22 @@
     }
     filtered.forEach((p) => {
       const card = document.createElement("button");
-      card.type      = "button";
-      card.className = "product-card";
+      card.type          = "button";
+      card.className     = "product-card";
+      card.dataset.name  = p.name;           // for search filter
       card.innerHTML = `
-        <span class="pname">${escapeHtml(p.name)}</span>
+        <span class="pname pc-name">${escapeHtml(p.name)}</span>
         <span class="pprice">${money(p.price)}</span>
         ${p.modifiers.length ? `<span class="pmods">${p.modifiers.length} option${p.modifiers.length > 1 ? "s" : ""}</span>` : ""}
       `;
       card.addEventListener("click", () => openModifierModal(p));
       grid.appendChild(card);
     });
+    // Re-apply search filter after grid re-render
+    const searchEl = document.getElementById("drinkSearch");
+    if (searchEl && searchEl.value.trim()) {
+      searchEl.dispatchEvent(new Event("input"));
+    }
   }
 
   tabs.addEventListener("click", (e) => {
@@ -953,3 +999,64 @@
   // ---- Bootstrap ----
   initTickets();
 })();
+
+// ================================================================
+// DRINK SEARCH (fuzzy filter)
+// ================================================================
+(function() {
+  var searchEl = document.getElementById("drinkSearch");
+  var clearBtn = document.getElementById("drinkSearchClear");
+  if (!searchEl) return;
+
+  function normalize(s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ""); }
+
+  function fuzzyMatch(query, text) {
+    if (!query) return true;
+    var q = normalize(query);
+    var t = normalize(text);
+    // Simple: all query chars must appear in order in text (subsequence match)
+    var qi = 0;
+    for (var i = 0; i < t.length && qi < q.length; i++) {
+      if (t[i] === q[qi]) qi++;
+    }
+    return qi === q.length;
+  }
+
+  function doSearch() {
+    var query = searchEl.value.trim();
+    clearBtn.classList.toggle("visible", query.length > 0);
+
+    var grid = document.getElementById("productGrid");
+    if (!grid) return;
+    var cards = grid.querySelectorAll(".product-card");
+    var anyVisible = false;
+
+    cards.forEach(function(card) {
+      var name = card.dataset.name || card.querySelector(".pc-name")?.textContent || "";
+      var match = !query || fuzzyMatch(query, name);
+      card.classList.toggle("search-hidden", !match);
+      if (match) anyVisible = true;
+    });
+
+    // No results message
+    var noRes = grid.querySelector(".search-no-results");
+    if (!noRes) {
+      noRes = document.createElement("div");
+      noRes.className = "search-no-results";
+      noRes.textContent = 'No drinks match "' + query + '".';
+      grid.appendChild(noRes);
+    } else {
+      noRes.textContent = 'No drinks match "' + query + '".';
+    }
+    noRes.style.display = (!anyVisible && query) ? "block" : "none";
+  }
+
+  searchEl.addEventListener("input", doSearch);
+  clearBtn.addEventListener("click", function() {
+    searchEl.value = "";
+    doSearch();
+    searchEl.focus();
+  });
+})();
+
+// Colour-coded tabs: handled in the Edit Tab modal (see renameTabConfirm listener above)

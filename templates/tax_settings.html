@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Tax Settings — Bar POS{% endblock %}
+{% block content %}
+<div class="panel narrow">
+  <div class="panel-head"><h2>Tax Configuration</h2></div>
+  <p style="color:var(--text-dim);font-size:13px;margin-top:0;">
+    Set the sales tax rate applied to every order. Tax is calculated on the pre-tip,
+    post-discount subtotal. Set to <strong>0</strong> to disable tax entirely.
+  </p>
+
+  <form method="post" class="stack" style="max-width:380px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Sales Tax Rate (%)
+      <input type="number" name="tax_rate" step="0.01" min="0" max="100"
+             value="{{ '%.4g' % tax_rate }}" placeholder="e.g. 8.5">
+      <span style="font-size:11px;color:var(--text-dim);">
+        Enter as a percentage — e.g. <strong>8.5</strong> for 8.5%.
+        Current: <strong>{{ '%.4g' % tax_rate }}%</strong>
+      </span>
+    </label>
+    <button type="submit" class="btn btn-amber">Save Tax Rate</button>
+  </form>
+
+  {% if tax_rate > 0 %}
+  <div style="margin-top:20px;padding:12px 14px;background:var(--bg-panel-2);border-radius:8px;font-size:13px;">
+    <strong>Example:</strong> A $10.00 order with {{ '%.4g' % tax_rate }}% tax →
+    tax = <strong>${{ '%.2f' % (10 * tax_rate / 100) }}</strong>,
+    total = <strong>${{ '%.2f' % (10 + 10 * tax_rate / 100) }}</strong>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>{% block title %}Home Bar POS{% endblock %}</title>
+<title>{% block title %}Bar POS{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <script>
 (function () {
@@ -21,6 +21,9 @@
     <span class="brand-text">THE&nbsp;BAR<span class="brand-sub">POS</span></span>
   </div>
   <nav class="topnav">
+    {% if session.get('role') == 'admin' %}
+    <a href="{{ url_for('admin_dashboard') }}" class="{{ 'active' if request.endpoint == 'admin_dashboard' }}">Dashboard</a>
+    {% endif %}
     <a href="{{ url_for('pos') }}" class="{{ 'active' if request.endpoint == 'pos' }}">Register</a>
     <a href="{{ url_for('history') }}" class="{{ 'active' if request.endpoint in ['history','order_detail'] }}">History</a>
     <a href="{{ url_for('shifts_list') }}" class="{{ 'active' if request.endpoint in ['shifts_list','shift_report'] }}">Shifts</a>
@@ -28,14 +31,21 @@
     <a href="{{ url_for('alerts_page') }}" class="{{ 'active' if request.endpoint == 'alerts_page' }}">
       Alerts{% if unresolved_alerts %} <span class="alert-badge">{{ unresolved_alerts }}</span>{% endif %}
     </a>
-    {% else %}
-    <a href="{{ url_for('alerts_page') }}" class="{{ 'active' if request.endpoint == 'alerts_page' }}">Stock</a>
-    {% endif %}
-    {% if session.get('role') == 'admin' %}
     <a href="{{ url_for('admin_products') }}" class="{{ 'active' if request.endpoint == 'admin_products' }}">Products</a>
     <a href="{{ url_for('admin_users') }}" class="{{ 'active' if request.endpoint == 'admin_users' }}">Users</a>
-    <a href="{{ url_for('admin_card_reader') }}" class="{{ 'active' if request.endpoint == 'admin_card_reader' }}">Card&nbsp;Reader&nbsp;<span style="font-size:10px;vertical-align:middle;opacity:0.7;">(Beta)</span></a>
-    <a href="{{ url_for('admin_receipt_printer') }}" class="{{ 'active' if request.endpoint == 'admin_receipt_printer' }}">Receipt&nbsp;Printer</a>
+    <!-- Settings dropdown -->
+    <div class="nav-dropdown">
+      <button class="nav-dropdown-btn {{ 'active' if request.endpoint in ['admin_card_reader','admin_receipt_printer','admin_receipt_settings','admin_tax','admin_audit_log'] }}">Settings ▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('admin_card_reader') }}">Card Reader <span style="font-size:10px;opacity:0.6;">(Beta)</span></a>
+        <a href="{{ url_for('admin_receipt_printer') }}">Receipt Printer</a>
+        <a href="{{ url_for('admin_receipt_settings') }}">Receipt Designer</a>
+        <a href="{{ url_for('admin_tax') }}">Tax Settings</a>
+        <a href="{{ url_for('admin_audit_log') }}">Audit Log</a>
+      </div>
+    </div>
+    {% else %}
+    <a href="{{ url_for('alerts_page') }}" class="{{ 'active' if request.endpoint == 'alerts_page' }}">Stock</a>
     {% endif %}
   </nav>
   <div class="topbar-right">

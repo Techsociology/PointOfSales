@@ -290,20 +290,48 @@ input:focus, select:focus { outline: none; border-color: var(--amber); }
 .pay-opt.active { background: var(--amber); color: #241a0d; border-color: var(--amber); }
 .ticket-actions { display: flex; gap: 8px; margin-top: 18px; }
 .ticket-actions .btn-ghost { border-color: var(--wood-line); color: var(--text); }
-.ticket-actions-below { margin-top: 18px; display: flex; justify-content: flex-end; }
-.close-shift-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.close-shift-form input { width: 220px; }
+.ticket-actions-below {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
 .shift-stats-bar {
   display: flex;
   gap: 18px;
   flex-wrap: wrap;
   font-size: 13px;
+  align-self: stretch;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--wood-line);
+  border-radius: 8px;
 }
 .shift-stat { color: var(--text-dim); white-space: nowrap; }
 .shift-stat strong { color: var(--text); }
+.close-shift-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.close-shift-form input[type="number"] { width: 200px; }
+.force-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.force-check input[type="checkbox"] { cursor: pointer; }
 .expected-cash-hint { font-size: 13px; color: var(--text-dim); }
 .expected-cash-hint strong { color: var(--amber); }
-.close-shift-note { text-align: right; font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+.close-shift-note { font-size: 12px; color: var(--text-dim); margin: 0; }
 
 /* ---------------- Modal ---------------- */
 .modal-backdrop {
@@ -594,4 +622,136 @@ input:focus, select:focus { outline: none; border-color: var(--amber); }
   border: 1px solid var(--wood-line);
   border-radius: 8px;
   font-size: 14px;
+}
+
+/* ---- Drink search bar ---- */
+.search-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  position: relative;
+}
+.drink-search-input {
+  flex: 1;
+  padding: 8px 36px 8px 12px;
+  border: 1px solid var(--wood-line);
+  border-radius: 8px;
+  background: var(--bg-panel-2);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.drink-search-input:focus { border-color: var(--amber); }
+.drink-search-clear {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  display: none;
+}
+.drink-search-clear.visible { display: block; }
+.product-card.search-hidden { display: none !important; }
+.search-no-results {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 14px;
+  padding: 30px 0;
+  display: none;
+}
+
+/* ---- Color-coded ticket tabs ---- */
+.ticket-tab[data-color="red"]    { border-bottom-color: #e05555 !important; }
+.ticket-tab[data-color="blue"]   { border-bottom-color: #5588e0 !important; }
+.ticket-tab[data-color="green"]  { border-bottom-color: #55be76 !important; }
+.ticket-tab[data-color="purple"] { border-bottom-color: #a055e0 !important; }
+.ticket-tab[data-color="orange"] { border-bottom-color: #e08855 !important; }
+.ticket-tab[data-color="pink"]   { border-bottom-color: #e055a8 !important; }
+.ticket-tab.active[data-color="red"]    { background: rgba(224,85,85,.15); }
+.ticket-tab.active[data-color="blue"]   { background: rgba(85,136,224,.15); }
+.ticket-tab.active[data-color="green"]  { background: rgba(85,190,118,.15); }
+.ticket-tab.active[data-color="purple"] { background: rgba(160,85,224,.15); }
+.ticket-tab.active[data-color="orange"] { background: rgba(224,136,85,.15); }
+.ticket-tab.active[data-color="pink"]   { background: rgba(224,85,168,.15); }
+
+/* ---- Color picker in tab context menu ---- */
+.color-picker-row {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0 2px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s;
+  flex-shrink: 0;
+}
+.color-swatch:hover { transform: scale(1.25); }
+.color-swatch.selected { border-color: var(--text); }
+.color-swatch[data-color=""]      { background: var(--wood-line); }
+.color-swatch[data-color="red"]   { background: #e05555; }
+.color-swatch[data-color="blue"]  { background: #5588e0; }
+.color-swatch[data-color="green"] { background: #55be76; }
+.color-swatch[data-color="purple"]{ background: #a055e0; }
+.color-swatch[data-color="orange"]{ background: #e08855; }
+.color-swatch[data-color="pink"]  { background: #e055a8; }
+
+/* ---- Settings nav dropdown ---- */
+.nav-dropdown { position: relative; display: inline-flex; align-items: center; }
+.nav-dropdown-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-family: inherit;
+  white-space: nowrap;
+  line-height: 1;
+}
+.nav-dropdown-btn:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.nav-dropdown-btn.active { color: var(--amber); background: var(--amber-glow); }
+.nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--wood-line);
+  border-radius: 10px;
+  padding: 6px 0;
+  min-width: 190px;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+.nav-dropdown:hover .nav-dropdown-menu,
+.nav-dropdown:focus-within .nav-dropdown-menu { display: block; }
+.nav-dropdown-menu a {
+  display: block;
+  padding: 9px 16px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-dropdown-menu a:hover { background: var(--bg-panel-2); color: var(--amber); }
+
+/* ---- Dashboard responsive ---- */
+@media (max-width: 700px) {
+  .dash-two-col { grid-template-columns: 1fr !important; }
 }

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Register — Home Bar POS{% endblock %}
+{% block title %}Register — Bar POS{% endblock %}
 {% block content %}
 
 {% if not shift %}
@@ -32,6 +32,10 @@
       {% for c in categories %}
       <button class="cat-tab" data-cat="{{ c.id }}">{{ c.name }}</button>
       {% endfor %}
+    </div>
+    <div class="search-bar-wrap">
+      <input type="search" id="drinkSearch" placeholder="🔍 Search drinks…" autocomplete="off" class="drink-search-input">
+      <button type="button" id="drinkSearchClear" class="drink-search-clear" title="Clear search">×</button>
     </div>
     <div class="product-grid" id="productGrid"></div>
   </section>
@@ -81,7 +85,7 @@
       <!-- Extra tab actions (note / rename / split / comp) -->
       <div class="ticket-tab-actions">
         <button type="button" class="btn btn-ghost btn-sm" id="noteBtn">📝 Note</button>
-        <button type="button" class="btn btn-ghost btn-sm" id="renameTabBtn" style="display:none;" title="Rename this tab">✏️ Rename</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="renameTabBtn" style="display:none;" title="Edit this tab">✏️ Edit Tab</button>
         <button type="button" class="btn btn-ghost btn-sm" id="splitBtn">⚡ Split</button>
         <button type="button" class="btn btn-ghost btn-sm" id="compBtn" title="Apply a discount or comp to this ticket">🏷 Comp</button>
       </div>
@@ -113,23 +117,23 @@
 </div>
 
 <div class="ticket-actions-below">
+  <div class="shift-stats-bar">
+    <span class="shift-stat">💵 Cash: <strong>${{ '%.2f' % expected_cash }}</strong></span>
+    <span class="shift-stat">💳 Card: <strong>${{ '%.2f' % expected_card_sales }}</strong></span>
+    <span class="shift-stat">🎁 Tips: <strong>${{ '%.2f' % expected_tips }}</strong></span>
+  </div>
   <form method="post" action="{{ url_for('close_shift') }}" onsubmit="return confirmClose(this);" class="close-shift-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="shift-stats-bar">
-      <span class="shift-stat">💵 Cash: <strong>${{ '%.2f' % expected_cash }}</strong></span>
-      <span class="shift-stat">💳 Card: <strong>${{ '%.2f' % expected_card_sales }}</strong></span>
-      <span class="shift-stat">🎁 Tips: <strong>${{ '%.2f' % expected_tips }}</strong></span>
-    </div>
     <input type="number" name="ending_cash" step="0.01" min="0" placeholder="Counted cash in drawer" required>
+    <button type="submit" class="btn btn-danger">Close Shift</button>
     {% if session.get('role') == 'admin' %}
     <label class="force-check" title="Override tab and cash-mismatch blocks — use only after reviewing alerts">
       <input type="checkbox" name="force" value="1"> Force close
     </label>
     {% endif %}
-    <button type="submit" class="btn btn-danger">Close Shift</button>
   </form>
+  <p class="close-shift-note">Counted cash must match expected. Open tabs must be checked out first.</p>
 </div>
-<p class="close-shift-note">Counted cash must match expected amount. Open tabs must be checked out first.</p>
 <script>
 function confirmClose(form) {
   var force = form.querySelector('[name="force"]');
@@ -186,19 +190,29 @@ function confirmClose(form) {
 <!-- Rename tab modal -->
 <div class="modal-backdrop" id="renameModal">
   <div class="modal-card">
-    <h3>Rename Tab</h3>
-    <p class="login-sub">Change the label, or pick a saved name.</p>
+    <h3>Edit Tab</h3>
+    <p class="login-sub">Change the label or colour, or pick a saved name.</p>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
       <select id="renameFromCard" style="flex:1;padding:8px 10px;font-size:14px;">
         <option value="">— pick a saved name —</option>
       </select>
       <button type="button" class="btn btn-ghost btn-sm" id="manageCardNamesBtnRename" title="Manage saved names">✏️ Edit</button>
     </div>
-    <input type="text" id="renameTabInput" placeholder="New tab name" maxlength="40"
-           style="width:100%;padding:8px 10px;font-size:15px;margin-bottom:12px;">
-    <div class="modal-actions">
+    <input type="text" id="renameTabInput" placeholder="Tab name" maxlength="40"
+           style="width:100%;padding:8px 10px;font-size:15px;margin-bottom:14px;">
+    <label style="font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim);display:block;margin-bottom:8px;">Tab colour</label>
+    <div class="color-picker-row" id="editTabColorRow">
+      <button type="button" class="color-swatch" data-color=""      title="No colour"></button>
+      <button type="button" class="color-swatch" data-color="red"   title="Red"></button>
+      <button type="button" class="color-swatch" data-color="blue"  title="Blue"></button>
+      <button type="button" class="color-swatch" data-color="green" title="Green"></button>
+      <button type="button" class="color-swatch" data-color="purple" title="Purple"></button>
+      <button type="button" class="color-swatch" data-color="orange" title="Orange"></button>
+      <button type="button" class="color-swatch" data-color="pink"  title="Pink"></button>
+    </div>
+    <div class="modal-actions" style="margin-top:16px;">
       <button type="button" class="btn btn-ghost" id="renameTabCancel">Cancel</button>
-      <button type="button" class="btn btn-amber" id="renameTabConfirm">Rename</button>
+      <button type="button" class="btn btn-amber" id="renameTabConfirm">Save</button>
     </div>
   </div>
 </div>

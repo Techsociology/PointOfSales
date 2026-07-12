@@ -1,8 +1,8 @@
-# Home Bar POS
+# Bar POS
 
-A self-hosted point-of-sale web app for a home bar.
+A self-hosted point-of-sale web app built for bars.
 Runs on any Windows PC, Mac, or Raspberry Pi — staff access it from any phone,
-tablet, or laptop on the same WiFi.
+tablet, or laptop on the same WiFi. No cloud subscription, no monthly fees.
 
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
 ![Flask](https://img.shields.io/badge/Flask-3.0-lightgrey)
@@ -12,30 +12,57 @@ tablet, or laptop on the same WiFi.
   <img src="./Photos/Bar_POS_admin-01.png" width="600" />
 </p>
 
+<p align="center">
+  <img src="./Photos/Bar_POS_staff-panel-darkmode-02.png" width="600" />
+</p>
+
 ---
 
 ## Features
 
+### Register & Orders
+
 | | |
 |---|---|
 | 🍺 **Register** | Tap drinks to build a ticket, pick modifiers, add a note |
-| 📋 **Open Tabs** | Multiple tabs at once, survive page refresh |
+| 📋 **Open Tabs** | Multiple named tabs at once, survive page refresh |
+| 🎨 **Color-coded Tabs** | Assign a colour to any tab (red, blue, green, purple, orange, pink) |
+| 🔍 **Drink Search** | Fuzzy search — type part of a name to instantly filter the product grid |
 | ⚡ **Split Payment** | Divide a bill across cash, card, and more |
 | 💰 **Comp & Discount** | Apply a discount at checkout; recorded per-order |
-| 💳 **Card Reader** *(Beta)* | Stripe Terminal (live) and Square Terminal (UI only, charging planned) |
-| 🖨️ **Thermal Printer** | ESC/POS network, USB, or browser-print fallback |
-| 📊 **Shift Reports** | Sales totals, tips, cash reconciliation |
-| 🚨 **Alerts** | Cash discrepancies for admins; stock-request alerts from bartenders |
-| 📦 **Stock Requests** | Bartenders send low-stock alerts directly to the admin Alerts panel |
-| 🔍 **History Search** | Search order history by drink name or order note |
-| 🗑️ **Void Orders** | Admin only, permanent, logged |
+| 💳 **Card Reader** *(Beta)* | Stripe Terminal (live) · Square Terminal 🚧 Planned |
+| 🖨️ **Receipt Printer** | ESC/POS network, USB, or browser-print fallback |
+| 🗑️ **Void Orders** | Admin only, permanent, recorded in the audit log |
+| ↩️ **Refunds** | Partial or full refund with method (original / cash / card / store credit) and reason — separate from void |
+
+### Reporting & Analytics
+
+| | |
+|---|---|
+| 📊 **Analytics Dashboard** | At-a-glance: today's sales, order count, average ticket, cash vs card split, top sellers, hourly bar chart, 7-day trend |
+| 📈 **Shift Reports** | Sales totals, tips, cash reconciliation per shift |
+| 🔎 **Order History** | Search history by drink name or note; view full order detail with refunds |
+
+### Configuration
+
+| | |
+|---|---|
+| 🧾 **Receipt Designer** | Customise venue name, address, phone, footer, and whether tax prints |
+| 💲 **Tax Settings** | Set a sales tax rate (%) — applied to every order's post-discount subtotal |
 | 🛒 **Products** | Categories, modifiers, pricing — full CRUD |
 | 👥 **Users** | Admin and staff roles, in-app role toggle, password management |
-| 🌙 **Dark / Light theme** | Per-device, remembered automatically |
+| 🌙 **Dark / Light Theme** | Per-device, remembered automatically |
 
-<p align="center">
-  <img src="./Photos/Bar_POS_staff-panel-darkmode-02.png" width="600" />
-</p>
+### Operations
+
+| | |
+|---|---|
+| 🚨 **Alerts** | Cash discrepancies for admins; stock-request alerts from bartenders |
+| 📦 **Stock Requests** | Bartenders flag low stock directly from the register — appears in admin Alerts panel |
+| 🔒 **Audit Log** | Every void, refund, and tax-rate change is timestamped and attributed |
+| 🔐 **Security** | CSRF protection on all forms; passwords hashed with Werkzeug; no raw card data stored |
+
+
 
 ---
 
@@ -65,7 +92,7 @@ Open `http://localhost:5000` in any browser.
 
 **Default login:** `admin` / `admin123` — change this immediately after first login.
 
-On first run the app creates `instance/bar_pos.db` with sample products.
+On first run the app creates `instance/bar_pos.db` with sample products. Admins are taken straight to the Dashboard; staff land on the Register.
 
 ### Change the port
 
@@ -87,27 +114,55 @@ PORT=8080 python app.py         # Mac / Linux
 
 ---
 
+## Tax configuration
+
+Go to **Admin → Settings → Tax Settings** and enter your local rate as a percentage (e.g. `8.5` for 8.5%).
+
+Tax is calculated on the post-discount subtotal and is stored per-order. Existing orders are not affected when you change the rate. To disable tax entirely, set the rate to `0`.
+
+---
+
+## Refunds vs Voids
+
+| | Void | Refund |
+|---|---|---|
+| **When to use** | Order was entered by mistake, before payment | Customer paid, money needs to go back |
+| **Effect on sales** | Removed entirely from totals | Sales total unchanged; refund is tracked separately |
+| **Reversible?** | No | No (but partial refunds are supported) |
+| **Who can do it** | Admin only | Admin only |
+| **Audit trail** | ✅ | ✅ |
+
+Both are accessible from the order detail page.
+
+---
+
+## Receipt customisation
+
+Go to **Admin → Settings → Receipt Designer** to configure what appears on every printed receipt:
+
+- **Venue name** — printed large at the top (replaces the default "THE BAR")
+- **Address** and **phone** — printed below the name if set
+- **Footer message** — e.g. "Thanks for visiting! Follow us on Instagram @..."
+- **Show tax line** — toggle whether the tax amount prints when tax > 0
+
+Changes take effect immediately on the next print job.
+
+---
+
 ## Thermal Receipt Printer *(optional)*
 
 The app supports ESC/POS thermal printers (the kind used in bars and cafés).
-`python-escpos` is an optional dependency — if it's not installed, a
-**Print (Browser)** fallback is always available from the order detail page.
+`python-escpos` is included in `requirements.txt`. A **Print (Browser)** fallback is always available from the order detail page.
 
-```bash
-pip install python-escpos
-```
-
-Then go to **Admin → Receipt Printer** to configure:
+Go to **Admin → Settings → Receipt Printer** to configure:
 
 - **Network** — printer connected over WiFi/Ethernet (enter IP and port, default 9100)
 - **USB (auto)** — printer on `/dev/usb/lp0` (Linux/Mac plug-and-play)
 - **USB (manual)** — enter vendor and product ID in hex (e.g. `04b8` / `0202` for Epson)
 
-Print buttons appear on the order detail page once a printer type is saved.
-
 ---
 
-## Bartender Stock Requests
+## Bartender stock requests
 
 Staff can flag low stock directly from the **Stock** tab in the navigation.
 They enter an item name and an optional note; the request appears immediately
@@ -246,7 +301,7 @@ Stripe Terminal reader.
 1. Create a free account at [stripe.com](https://stripe.com)
 2. Go to **Developers → API keys** → copy your secret key (`sk_test_...` for
    testing, `sk_live_...` for real payments)
-3. In the POS: **Admin → Card Reader (Beta)** → select Stripe Terminal → paste
+3. In the POS: **Admin → Settings → Card Reader (Beta)** → select Stripe Terminal → paste
    the key and your Reader ID (`tmr_...`) → Save
 4. The Card button on the register shows 💳 when a reader is active — tap
    **Card** → **Charge** to send the charge to the physical reader
@@ -254,16 +309,10 @@ Stripe Terminal reader.
 > **No physical reader yet?** Stripe supports a simulated reader for testing —
 > see [Stripe's Terminal quickstart](https://stripe.com/docs/terminal/quickstart).
 
-### Square Terminal
+### Square Terminal 🚧 Planned
 
-> ⚠️ **Not yet tested** — credential fields are present in
-> **Admin → Card Reader (Beta)**, but the charging flow has not been verified
-> against a real or sandbox Square Terminal device. Treat as unverified.
-
-1. Sign up at [developer.squareup.com](https://developer.squareup.com)
-2. Create an application → copy the **Sandbox Access Token** for testing
-3. In the POS: **Admin → Card Reader (Beta)** → select Square Terminal → paste
-   the token and Device ID → Save
+Square Terminal integration is planned for a future release. The option appears
+in the card reader settings but charging is not yet functional.
 
 ---
 
@@ -271,7 +320,7 @@ Stripe Terminal reader.
 
 All data is stored in `instance/bar_pos.db` (SQLite).
 
-- **Backup:** copy `bar_pos.db` anywhere safe
+- **Backup:** copy `bar_pos.db` anywhere safe. Automate this with a scheduled task or cron job.
 - **Restore:** replace the file and restart the app
 - **Reset:** delete the file — a fresh database is created on next startup
 
@@ -280,11 +329,21 @@ All data is stored in `instance/bar_pos.db` (SQLite).
 
 ---
 
+## Security
+
+- All form submissions are protected by CSRF tokens (Flask-WTF)
+- Passwords are hashed using Werkzeug's `generate_password_hash` — never stored in plaintext
+- No raw card numbers are stored — Stripe and Square SDKs handle tokenisation
+- Every void, refund, and sensitive setting change is written to the **Audit Log** (`Admin → Settings → Audit Log`) with actor, timestamp, and detail
+- The Flask secret key is auto-generated on first run and stored in `instance/secret.txt` — keep it safe
+
+---
+
 ## Project structure
 
 ```
 app.py                    Flask routes and business logic
-database.py               SQLite schema and helper functions
+database.py               SQLite schema, migrations, and helper functions
 launcher.py               Entry point for the compiled executable
 build_exe.bat             Build a standalone Windows executable
 build_linux.sh            Build a standalone Linux executable
@@ -292,11 +351,27 @@ HomeBarPOS.spec           PyInstaller configuration
 HomeBarPOS_installer.nsi  NSIS script — packages dist\ into a single Setup.exe
 requirements.txt          Python dependencies
 static/
-  app.js                  Register UI (vanilla JS)
+  app.js                  Register UI — tabs, search, colour picker, cart (vanilla JS)
   style.css               All styles (dark and light theme)
-templates/                Jinja2 HTML templates
-  receipt_printer.html    Admin: thermal printer settings
-  staff_alerts.html       Staff: stock request form and history
+templates/
+  base.html               Shared layout and navigation
+  pos.html                Register (main POS screen)
+  dashboard.html          Analytics dashboard (admin)
+  history.html            Order history list
+  order_detail.html       Single order — items, refunds, void, receipt print
+  shifts.html             Shift list
+  shift_report.html       Shift detail and cash reconciliation
+  alerts.html             Admin alerts panel
+  staff_alerts.html       Staff stock-request form
+  products.html           Product/category/modifier management
+  users.html              User management
+  card_reader.html        Card reader settings
+  receipt_printer.html    Thermal printer settings
+  receipt_settings.html   Receipt designer
+  tax_settings.html       Tax rate configuration
+  audit_log.html          Audit log viewer
+  login.html              Login screen
+  change_password.html    Password change form
 instance/                 Auto-created on first run (excluded from git)
   bar_pos.db              SQLite database — all your data lives here
   secret.txt              Flask session key — auto-generated, never share
@@ -310,15 +385,15 @@ Built with and thanks to these open-source projects:
 
 - Built with assistance from [Claude](https://claude.ai) (Anthropic AI) ❤️
 - [Flask](https://flask.palletsprojects.com/) — web framework
-- [Werkzeug](https://werkzeug.palletsprojects.com/) — WSGI utilities
+- [Werkzeug](https://werkzeug.palletsprojects.com/) — WSGI utilities and password hashing
 - [Flask-WTF](https://flask-wtf.readthedocs.io/) — CSRF protection
 - [waitress](https://docs.pylonsproject.org/projects/waitress/) — production WSGI server for packaged builds
-- [python-escpos](https://python-escpos.readthedocs.io/) — optional ESC/POS thermal printer support
+- [python-escpos](https://python-escpos.readthedocs.io/) — ESC/POS thermal printer support
 - [Stripe](https://stripe.com/docs/terminal) — Stripe Terminal SDK for card reader integration
 - [PyInstaller](https://pyinstaller.org/) — packaging into standalone Windows/Linux executables
 - [NSIS](https://nsis.sourceforge.io/) — building the Windows installer
 
-Thanks as well to everyone who files issues, tests the Card Reader beta, and
+Thanks to everyone who files issues, tests the Card Reader beta, and
 contributes fixes and features — see [CONTRIBUTING.md](CONTRIBUTING.md) to get involved.
 
 ---

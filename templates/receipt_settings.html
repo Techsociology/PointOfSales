@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Receipt Settings — Bar POS{% endblock %}
+{% block content %}
+<div class="panel narrow">
+  <div class="panel-head"><h2>Receipt Designer</h2></div>
+  <p style="color:var(--text-dim);font-size:13px;margin-top:0;">
+    Customize what appears on printed thermal receipts.
+  </p>
+
+  <form method="post" class="stack" style="max-width:440px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label>Bar / Venue Name
+      <input type="text" name="bar_name" maxlength="40"
+             value="{{ settings.bar_name }}" placeholder="THE BAR">
+      <span style="font-size:11px;color:var(--text-dim);">Printed large at the top of every receipt.</span>
+    </label>
+
+    <label>Address (optional)
+      <input type="text" name="address" maxlength="80"
+             value="{{ settings.address }}" placeholder="123 Main St, City">
+    </label>
+
+    <label>Phone (optional)
+      <input type="text" name="phone" maxlength="30"
+             value="{{ settings.phone }}" placeholder="+1 555-000-0000">
+    </label>
+
+    <label>Footer message
+      <input type="text" name="footer" maxlength="120"
+             value="{{ settings.footer }}" placeholder="Thank you!">
+      <span style="font-size:11px;color:var(--text-dim);">Appears at the bottom of every receipt.</span>
+    </label>
+
+    <label style="flex-direction:row;align-items:center;gap:10px;font-size:14px;">
+      <input type="checkbox" name="show_tax" {% if settings.show_tax %}checked{% endif %}
+             style="width:18px;height:18px;accent-color:var(--amber);">
+      Show tax line on receipt (if tax &gt; 0)
+    </label>
+
+    <button type="submit" class="btn btn-amber">Save Receipt Settings</button>
+  </form>
+
+  <div style="margin-top:24px;">
+    <h3 style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;">Preview</h3>
+    <div style="font-family:monospace;background:var(--bg-panel-2);border-radius:8px;padding:16px;font-size:13px;white-space:pre;line-height:1.6;max-width:340px;">{{ settings.bar_name or 'THE BAR' }}
+{% if settings.address %}{{ settings.address }}
+{% endif %}{% if settings.phone %}{{ settings.phone }}
+{% endif %}--------------------------------
+Order #42   2026-07-10 21:00
+Server: bartender
+--------------------------------
+2x Draft Beer            $10.00
+1x Mojito                 $8.00
+--------------------------------
+Subtotal                 $18.00
+Discount                 -$0.00
+Tax                       $0.00
+Tip                       $2.00
+TOTAL                    $20.00
+Payment: cash
+--------------------------------
+{{ settings.footer or 'Thank you!' }}</div>
+  </div>
+</div>
+{% endblock %}

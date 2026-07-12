@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — Bar POS{% endblock %}
+{% block content %}
+<div class="panel">
+  <div class="panel-head">
+    <h2>Audit Log</h2>
+    <span style="font-size:12px;color:var(--text-dim);">Last 300 events</span>
+  </div>
+  <p style="color:var(--text-dim);font-size:13px;margin-top:0;">
+    Every sensitive action (voids, refunds, price changes, role switches, tax changes) is recorded here.
+  </p>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>When</th>
+        <th>Who</th>
+        <th>Action</th>
+        <th>Target</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="font-size:12px;color:var(--text-dim);white-space:nowrap;">{{ r.created_at }}</td>
+        <td><strong>{{ r.actor or '—' }}</strong></td>
+        <td>
+          {% if r.action == 'void_order' %}<span style="color:#e3a08d;">⊘ void</span>
+          {% elif r.action == 'refund' %}<span style="color:#6db86d;">↩ refund</span>
+          {% elif r.action == 'tax_rate_change' %}<span style="color:var(--amber);">% tax change</span>
+          {% else %}{{ r.action }}{% endif %}
+        </td>
+        <td style="font-size:12px;">{{ r.target or '—' }}</td>
+        <td style="font-size:12px;color:var(--text-dim);">{{ r.detail or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="color:var(--text-dim);text-align:center;padding:20px;">No audit events yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

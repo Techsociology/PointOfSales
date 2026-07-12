@@ -1,5 +1,5 @@
 """
-Desktop launcher for Home Bar POS.
+Desktop launcher for Bar POS.
 
 Run with:  python launcher.py
 Or as the compiled HomeBarPOS.exe / HomeBarPOS binary.
@@ -46,7 +46,7 @@ def show_error(msg):
     print("ERROR:", msg, file=sys.stderr)
     try:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(0, msg, "Home Bar POS — Startup Error", 0x10)
+        ctypes.windll.user32.MessageBoxW(0, msg, "Bar POS — Startup Error", 0x10)
     except Exception:
         pass  # not Windows, already printed above
 
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         import app as posapp
     except Exception as exc:
         show_error(
-            f"Failed to start Home Bar POS.\n\n"
+            f"Failed to start Bar POS.\n\n"
             f"Error: {exc}\n\n"
             f"If you see 'No module named ...', try re-running build_exe.bat.\n"
             f"Check that Python and pip are working first."
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     try:
         threading.Thread(target=open_browser, daemon=True).start()
         print("=" * 60)
-        print("  Home Bar POS is running.")
+        print("  Bar POS is running.")
         print(f"  This computer:      http://127.0.0.1:{PORT}")
         print(f"  Other WiFi devices: http://{local_ip()}:{PORT}")
         print("  Keep this window open while the register is in use.")
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         if "address already in use" in str(exc).lower() or "10048" in str(exc):
             show_error(
                 f"Port {PORT} is already in use.\n\n"
-                "Home Bar POS may already be running — check your taskbar.\n"
+                "Bar POS may already be running — check your taskbar.\n"
                 "If not, another program is using that port.\n\n"
                 f"To use a different port:\n"
                 f"  set PORT=8080   (Windows CMD)\n"

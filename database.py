@@ -82,6 +82,7 @@ def init_db():
             note           TEXT,
             tip            REAL NOT NULL DEFAULT 0,
             discount       REAL NOT NULL DEFAULT 0,
+            tax            REAL NOT NULL DEFAULT 0,
             voided         INTEGER NOT NULL DEFAULT 0,
             voided_at      TEXT,
             voided_by      TEXT,
@@ -131,7 +132,7 @@ def init_db():
         -- Generic admin alert log (cash discrepancies + bartender stock requests etc.)
         CREATE TABLE IF NOT EXISTS admin_alerts (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            alert_type   TEXT    NOT NULL DEFAULT 'cash',  -- 'cash' | 'stock_request' | 'other'
+            alert_type   TEXT    NOT NULL DEFAULT 'cash',
             title        TEXT    NOT NULL,
             body         TEXT,
             raised_by    TEXT,
@@ -143,6 +144,28 @@ def init_db():
             FOREIGN KEY (shift_id) REFERENCES shifts(id)
         );
 
+        -- Refund records (separate from void — money goes back to customer)
+        CREATE TABLE IF NOT EXISTS refunds (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id     INTEGER NOT NULL,
+            amount       REAL NOT NULL,
+            reason       TEXT,
+            method       TEXT NOT NULL DEFAULT 'original',
+            refunded_by  TEXT,
+            refunded_at  TEXT NOT NULL,
+            FOREIGN KEY (order_id) REFERENCES orders(id)
+        );
+
+        -- Audit log: every sensitive action recorded here
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            actor      TEXT,
+            action     TEXT NOT NULL,
+            target     TEXT,
+            detail     TEXT
+        );
+
         CREATE INDEX IF NOT EXISTS idx_cash_disc_resolved
             ON cash_discrepancies(resolved);
 
@@ -152,11 +175,15 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_order_splits_order
             ON order_splits(order_id);
 
+        CREATE INDEX IF NOT EXISTS idx_audit_log_created
+            ON audit_log(created_at);
+
         CREATE TABLE IF NOT EXISTS tickets (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             shift_id   INTEGER NOT NULL,
             label      TEXT NOT NULL DEFAULT 'Tab',
             note       TEXT,
+            color      TEXT,
             created_at TEXT NOT NULL,
             created_by TEXT,
             FOREIGN KEY (shift_id) REFERENCES shifts(id)
@@ -186,6 +213,7 @@ def init_db():
         ("voided_by",   "ALTER TABLE orders ADD COLUMN voided_by TEXT"),
         ("void_reason", "ALTER TABLE orders ADD COLUMN void_reason TEXT"),
         ("discount",    "ALTER TABLE orders ADD COLUMN discount REAL NOT NULL DEFAULT 0"),
+        ("tax",         "ALTER TABLE orders ADD COLUMN tax REAL NOT NULL DEFAULT 0"),
     ]:
         if col not in _order_cols:
             c.execute(ddl)
@@ -193,6 +221,8 @@ def init_db():
     ticket_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tickets)")}
     if "note" not in ticket_cols:
         c.execute("ALTER TABLE tickets ADD COLUMN note TEXT")
+    if "color" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN color TEXT")
 
     conn.commit()
 
@@ -306,6 +336,15 @@ def set_setting(conn, key, value):
         "INSERT INTO settings (key, value) VALUES (?, ?) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, value),
+    )
+    conn.commit()
+
+
+def log_audit(conn, actor, action, target=None, detail=None):
+    """Append a row to the audit_log table."""
+    conn.execute(
+        "INSERT INTO audit_log (created_at, actor, action, target, detail) VALUES (?, ?, ?, ?, ?)",
+        (now_iso(), actor, action, target, detail),
     )
     conn.commit()
 

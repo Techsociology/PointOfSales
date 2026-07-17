@@ -363,7 +363,7 @@ instance/                 Auto-created on first run (excluded from git)
 
 Built with and thanks to these open-source projects:
 
-- Built with assistance from [Claude](https://claude.ai) @claude (Anthropic AI) ❤️
+- Built with assistance from [Claude](https://claude.ai) [@](https://github.com/claude) (Anthropic AI) ❤️
 - [Flask](https://flask.palletsprojects.com/) — web framework
 - [Werkzeug](https://werkzeug.palletsprojects.com/) — WSGI utilities and password hashing
 - [Flask-WTF](https://flask-wtf.readthedocs.io/) — CSRF protection
